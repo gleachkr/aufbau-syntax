@@ -50,7 +50,7 @@ One spec file per textbook system; no code per system.
 ## Status
 
 Pre-release, but the layer stack is complete and tested end to end: three
-shipped specs (`forallx-calgary-2019`, `forallx-magnus`, `carnap-prop`),
+example specs (`forallx-calgary-2019`, `forallx-magnus`, `carnap-prop`),
 a behavioral corpus transcribed from the parsers this library replaces,
 round-trip laws for both print modes, and an acceptance test in which the
 real Aufbau compiler parses this library's engine output and certifies it
@@ -79,12 +79,19 @@ bun add @aufbau/syntax          # released
 bun add @aufbau/syntax@canary   # the build of the current main
 ```
 
-The package ships compiled JavaScript and declarations (`dist/`, emitted by
-`tsc` — there is nothing to bundle, since there are no runtime dependencies)
-plus the spec files themselves, reachable as
-`@aufbau/syntax/specs/forallx-calgary-2019.mm0` for any bundler with a text
-loader. Every release is published from CI with npm provenance; see
-`docs/releasing.md`.
+The package is code and nothing else: compiled JavaScript and declarations
+(`dist/`, emitted by `tsc` — there is nothing to bundle, since there are no
+runtime dependencies). Every release is published from CI with npm
+provenance; see `docs/releasing.md`.
+
+**The specs in this repository are examples, not a catalogue.** They exist to
+exercise the layer stack and to show what a spec looks like; they are not
+published, and no application should depend on one. A spec encodes a
+*textbook's* conventions, which is the application's subject matter, not the
+library's — so an application keeps its own specs in its own tree, in whatever
+form its build wants (a string constant, a bundled asset, a database row),
+and hands the source text to `parseSpec`. This library's business ends at
+"given this spec, parse and print".
 
 ## Development
 

@@ -13,7 +13,8 @@ are `.github/workflows/test.yml` and `.github/workflows/npm-canary.yml`.
 It installs with a frozen lockfile, checks the release version, runs
 `bun run validate` (tests, `tsc --noEmit`, `biome ci`), builds `dist/`, runs
 the built package through **Node** (`scripts/smoke.mjs`), and asserts the
-tarball would carry `dist/` and `specs/` but no sources.
+tarball carries `dist/` and nothing else — no sources, no tests, and no
+specs (those are examples; applications own their own).
 
 The Node smoke test earns its place: the suite runs under Bun, which resolves
 extensionless imports and TypeScript alike, so it cannot notice that a

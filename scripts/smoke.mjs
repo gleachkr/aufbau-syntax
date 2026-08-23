@@ -1,11 +1,13 @@
 /**
  * Smoke-test the built package the way a consumer meets it: import `dist/`
- * from plain Node, read a shipped spec, parse textbook input, print it back.
+ * from plain Node, read an example spec, parse textbook input, print it back.
  *
  * This is not a substitute for `bun test` — it is the check that the *emitted*
  * artifact works outside Bun. It catches exactly the failures the test suite
- * cannot see: an import specifier Node's ESM resolver rejects, a file missing
- * from `files`, an entry point that points at nothing.
+ * cannot see: an import specifier Node's ESM resolver rejects, an entry point
+ * that points at nothing, a declaration that does not match the emit. (The
+ * spec it reads is a repository fixture, not a published file — CI checks the
+ * tarball's contents separately.)
  *
  *   node scripts/smoke.mjs
  */

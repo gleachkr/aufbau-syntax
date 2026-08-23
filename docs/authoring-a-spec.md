@@ -2,8 +2,16 @@
 
 A spec is one `.mm0` file: ordinary MM0 declarations carrying the
 signature, lexicon, and notations, plus [`@syntax`
-annotations](syntax-annotations.md) for what MM0 cannot say. The three
-shipped specs are worked examples:
+annotations](syntax-annotations.md) for what MM0 cannot say.
+
+A spec is owned by whoever teaches from it, not by this library — it encodes
+one textbook's conventions, and those are subject matter, not machinery. The
+three specs in `specs/` are worked examples and test fixtures; they are not
+published, and an application should keep its own under its own tree. What
+the library asks for is the source text; where it came from is not its
+business.
+
+The examples:
 
 - `specs/forallx-calgary-2019.mm0` — parenthesized predicates, shared
   connective rungs, chain refusal, bracket discipline, closed sentences.

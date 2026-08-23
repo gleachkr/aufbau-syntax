@@ -13,14 +13,12 @@
       "types": "./dist/index.d.ts",
       "default": "./dist/index.js"
     },
-    "./specs/*": "./specs/*",
     "./package.json": "./package.json"
   },
   "types": "./dist/index.d.ts",
   "sideEffects": false,
   "files": [
     "dist",
-    "specs",
     "CHANGELOG.md",
     "LICENSE",
     "README.md"

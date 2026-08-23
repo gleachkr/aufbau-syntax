@@ -64,7 +64,6 @@ jobs:
             for (const wanted of [
               "dist/index.js",
               "dist/index.d.ts",
-              "specs/forallx-calgary-2019.mm0",
               "LICENSE",
               "README.md",
             ]) {
@@ -74,10 +73,20 @@ jobs:
               );
             }
 
+            // Code only. The specs in this repository are examples and
+            // fixtures — an application owns the specs it teaches from,
+            // and must not be able to reach for one of ours by accident.
             const stray = files.filter(
-              (f) => f.startsWith("src/") || f.startsWith("tests/"),
+              (f) =>
+                f.startsWith("src/") ||
+                f.startsWith("tests/") ||
+                f.startsWith("specs/"),
             );
-            assert.deepEqual(stray, [], "source and tests must not ship");
+            assert.deepEqual(
+              stray,
+              [],
+              "sources, tests, and specs must not ship",
+            );
 
             console.log(`Tarball carries ${files.length} files.`);
           '
