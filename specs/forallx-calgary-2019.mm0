@@ -2,14 +2,15 @@
 --
 -- The declarations are ordinary MM0: sorts, constructors, coercions, and
 -- notations (several per constructor — the last declared is the canonical
--- spelling a printer uses; the rest are accepted input). The `@syntax`
--- annotations carry what MM0 cannot say: which letters name what (with
--- their `_1` subscripts), which bracket pairs group, that the conditional
--- rung refuses to chain, and forallx's two refusal conventions.
---
--- Families that take arguments are declared before the ones that do not,
--- because a reader tries them in declaration order: `f(a)` is the function
--- letter and bare `f` falls through to the constant, as in Carnap.
+-- spelling a printer uses; the rest are accepted input). The lexicon is
+-- ordinary MM0 too: each letter is a declared term, and the variables ride
+-- the engine's own `@vars` annotation. The `@syntax` annotations carry
+-- only what MM0 cannot say: which bracket pairs group, that the
+-- conditional rung refuses to chain, forallx's two refusal conventions,
+-- and that a missing argument sequence is the elided `snil` — which is
+-- how one seq-taking declaration per letter covers both the sentence
+-- letter `P` and the variadic predicate `P(a,b)`, and both the constant
+-- `f` and the function `f(x)`, as in Carnap.
 
 --| @syntax brackets ( ) [ ]
 --| @syntax assoc-none 20
@@ -20,36 +21,72 @@ delimiter $ ( ) [ ] , $;
 
 provable sort wff;
 
---| @syntax family var s-z subscripts
+--| @vars s t u v w x y z
 sort var;
-sort name;
 sort tm;
 sort seq;
 
 term v2t (x: var): tm;
 coercion v2t: var > tm;
-term n2t (a: name): tm;
-coercion n2t: name > tm;
 term t2s (t: tm): seq;
 coercion t2s: tm > seq;
 
 -- Argument sequences, so a predicate or function letter is variadic:
--- F(a), R(a,b), R(a,b,c) share one letter shape.
+-- F(a), R(a,b), R(a,b,c) share one letter shape. The empty sequence is
+-- elided: writing it is optional, printing it is suppressed.
+--| @syntax elided
+term snil: seq;
 term scomma (s t: seq): seq;
 infixl scomma: $,$ prec 10;
 
---| @syntax family fn a-t subscripts
---| @syntax role function
-term _fn (s: seq): tm;
---| @syntax family const a-r subscripts
---| @syntax role constant
-term _const: name;
---| @syntax family pred A-Z subscripts
---| @syntax role predicate
-term _pred (s: seq): wff;
---| @syntax family atom A-Z subscripts
---| @syntax role sentence-letter
-term _atom: wff;
+-- The predicate letters; nullary use (a sentence letter) is the elided
+-- empty sequence.
+term A (s: seq): wff;
+term B (s: seq): wff;
+term C (s: seq): wff;
+term D (s: seq): wff;
+term E (s: seq): wff;
+term F (s: seq): wff;
+term G (s: seq): wff;
+term H (s: seq): wff;
+term I (s: seq): wff;
+term J (s: seq): wff;
+term K (s: seq): wff;
+term L (s: seq): wff;
+term M (s: seq): wff;
+term N (s: seq): wff;
+term O (s: seq): wff;
+term P (s: seq): wff;
+term Q (s: seq): wff;
+term R (s: seq): wff;
+term S (s: seq): wff;
+term T (s: seq): wff;
+term U (s: seq): wff;
+term V (s: seq): wff;
+term W (s: seq): wff;
+term X (s: seq): wff;
+term Y (s: seq): wff;
+term Z (s: seq): wff;
+
+-- The function letters; nullary use (a constant) likewise.
+term a (s: seq): tm;
+term b (s: seq): tm;
+term c (s: seq): tm;
+term d (s: seq): tm;
+term e (s: seq): tm;
+term f (s: seq): tm;
+term g (s: seq): tm;
+term h (s: seq): tm;
+term i (s: seq): tm;
+term j (s: seq): tm;
+term k (s: seq): tm;
+term l (s: seq): tm;
+term m (s: seq): tm;
+term n (s: seq): tm;
+term o (s: seq): tm;
+term p (s: seq): tm;
+term q (s: seq): tm;
+term r (s: seq): tm;
 
 --| @syntax role negation
 term not (p: wff): wff;

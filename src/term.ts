@@ -12,14 +12,8 @@ export type Term = AppTerm | VariableTerm;
 
 export interface AppTerm {
   readonly kind: "app";
-  /**
-   * The constructor: a declared term/def name, a coercion name, or — when
-   * `family` is set — an elaborated letter (`F_1`), which the spec declares
-   * only as a template.
-   */
+  /** The constructor: a declared term, def, or coercion name. */
   readonly term: string;
-  /** The letter family this application was elaborated from, if any. */
-  readonly family: string | null;
   readonly args: readonly Term[];
   readonly sort: string;
   readonly span: Span;
@@ -38,7 +32,7 @@ export interface AppTerm {
 
 export interface VariableTerm {
   readonly kind: "variable";
-  /** The name as written, subscript and all (`x_1`). */
+  /** The token as written — one of its sort's `@vars` pool. */
   readonly name: string;
   readonly sort: string;
   readonly span: Span;

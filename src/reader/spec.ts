@@ -13,7 +13,6 @@ import {
   type LintName,
   parseSyntaxAnnotation,
   type RewriteRule,
-  type SubscriptForm,
   type SyntaxAnnotation,
 } from "./annotations";
 import {
@@ -30,13 +29,25 @@ export interface SortInfo {
   readonly modifiers: readonly string[];
   readonly name: string;
   readonly span: Span;
+  /**
+   * The sort's variable tokens, read from the engine's own `@vars`
+   * annotation (which stays in `foreignAnnotations` untouched — it is the
+   * engine's, we only listen in). These are the surface lexicon's
+   * identifiers of this sort; whether a quantifier can bind them falls
+   * out of the quantifiers' binder sorts, not from here.
+   */
+  readonly vars: readonly string[];
 }
 
 export interface TermInfo {
   readonly binders: readonly Binder[];
+  /** `@syntax elided`: supplied when an argument of its sort is missing. */
+  readonly elided: boolean;
   readonly foreignAnnotations: readonly Annotation[];
   /** True when this came from a `def` rather than a `term`. */
   readonly isDef: boolean;
+  /** `@syntax juxtaposed`: adjacency of its sort's leaves denotes it. */
+  readonly juxtaposed: boolean;
   readonly name: string;
   readonly returnSort: string;
   readonly roles: readonly string[];
@@ -68,17 +79,6 @@ export type NotationInfo =
       readonly token: string;
     };
 
-export interface LetterFamily {
-  readonly class: string;
-  /** Arguments are glued straight on (`Fxy`) instead of parenthesized. */
-  readonly juxtaposed: boolean;
-  readonly letters: ReadonlySet<string>;
-  readonly subscripts: SubscriptForm;
-  readonly target:
-    | { readonly kind: "sort"; readonly sort: string }
-    | { readonly kind: "template"; readonly term: string };
-}
-
 export interface Spec {
   readonly assocNone: ReadonlySet<number>;
   readonly coercions: readonly CoercionInfo[];
@@ -90,7 +90,6 @@ export interface Spec {
     readonly dropOuterParens: boolean;
     readonly rotateBrackets: readonly (readonly [string, string])[] | null;
   };
-  readonly families: readonly LetterFamily[];
   /** Always starts with the built-in `("(", ")")` pair. */
   readonly groupingPairs: readonly (readonly [string, string])[];
   readonly lints: readonly LintName[];
@@ -126,8 +125,15 @@ const TEMPLATES: Record<string, string> = {
     "the template references {name}, which the pattern does not capture",
   rewrite_not_invertible:
     "capture {name} is not used exactly once in the template; mark the rule input-only if that is intended",
-  duplicate_family_class: "letter family {name} is already declared",
-  family_target: "@syntax family must sit on a sort or on a placeholder term",
+  juxtaposed_target:
+    "@syntax juxtaposed must sit on a binary term whose arguments and result share one sort",
+  juxtaposed_needs_notation:
+    "a juxtaposed term needs a declared notation, so the engine can read it",
+  juxtaposed_duplicate: "sort {sort} already has a juxtaposed combiner",
+  elided_target: "@syntax elided must sit on a term with no arguments",
+  elided_duplicate: "sort {sort} already has an elided term",
+  vars_term_conflict:
+    "@vars token {token} is also a declared term; a name can be only one",
   role_target: "@syntax role must sit on a term",
 };
 
@@ -143,6 +149,10 @@ function report(
 /** The binder count an application must fill (bound and regular alike). */
 function regularBinders(binders: readonly Binder[]): readonly Binder[] {
   return binders.filter((binder) => !binder.binds);
+}
+
+function binderSortOf(binder: Binder): string {
+  return "sort" in binder.type ? binder.type.sort : "";
 }
 
 interface TokenMeaning {
@@ -181,7 +191,6 @@ export function parseSpec(source: string): SpecParse {
   const terms = new Map<string, TermInfo>();
   const coercions: CoercionInfo[] = [];
   const notations: NotationInfo[] = [];
-  const families: LetterFamily[] = [];
   const rewrites: RewriteRule[] = [];
   const lints: LintName[] = [];
   const assocNone = new Set<number>();
@@ -236,11 +245,26 @@ export function parseSpec(source: string): SpecParse {
           break;
         }
 
+        // The engine's `@vars` pools are this library's variable lexicon
+        // too; the lines stay foreign (they are the engine's to keep).
+        const vars: string[] = [];
+
+        for (const annotation of foreign) {
+          const match = /^@vars\s+(.+)$/.exec(annotation.text.trim());
+
+          if (match !== null) {
+            vars.push(
+              ...(match[1] ?? "").split(/\s+/).filter((w) => w.length > 0),
+            );
+          }
+        }
+
         sorts.set(statement.name, {
           foreignAnnotations: foreign,
           modifiers: statement.modifiers,
           name: statement.name,
           span: statement.span,
+          vars,
         });
         break;
       }
@@ -278,8 +302,10 @@ export function parseSpec(source: string): SpecParse {
 
         terms.set(statement.name, {
           binders: [...statement.binders, ...extra],
+          elided: false,
           foreignAnnotations: foreign,
           isDef: statement.kind === "def",
+          juxtaposed: false,
           name: statement.name,
           returnSort,
           roles: [],
@@ -353,38 +379,68 @@ export function parseSpec(source: string): SpecParse {
 
   // ── Second pass: interpret @syntax annotations now that names resolve.
 
+  const juxtaposedBySort = new Map<string, string>();
+  const elidedBySort = new Map<string, string>();
+
   for (const { annotation, span, statement } of attached) {
     switch (annotation.kind) {
-      case "family": {
-        if (families.some((family) => family.class === annotation.class)) {
+      case "juxtaposed": {
+        const info =
+          statement.kind === "term" || statement.kind === "def"
+            ? terms.get(statement.name)
+            : undefined;
+        const regular =
+          info === undefined ? [] : regularBinders(info.binders);
+        const sort = info?.returnSort ?? "";
+
+        if (
+          info === undefined ||
+          info.binders.length !== 2 ||
+          regular.length !== 2 ||
+          regular.some((binder) => binderSortOf(binder) !== sort)
+        ) {
+          report(diagnostics, "juxtaposed_target", {}, span);
+          break;
+        }
+
+        if (!notations.some((notation) => notation.term === info.name)) {
+          report(diagnostics, "juxtaposed_needs_notation", {}, span);
+          break;
+        }
+
+        if (juxtaposedBySort.has(sort)) {
+          report(diagnostics, "juxtaposed_duplicate", { sort }, span);
+          break;
+        }
+
+        juxtaposedBySort.set(sort, info.name);
+        terms.set(info.name, { ...info, juxtaposed: true });
+        break;
+      }
+
+      case "elided": {
+        const info =
+          statement.kind === "term" || statement.kind === "def"
+            ? terms.get(statement.name)
+            : undefined;
+
+        if (info === undefined || regularBinders(info.binders).length !== 0) {
+          report(diagnostics, "elided_target", {}, span);
+          break;
+        }
+
+        if (elidedBySort.has(info.returnSort)) {
           report(
             diagnostics,
-            "duplicate_family_class",
-            { name: annotation.class },
+            "elided_duplicate",
+            { sort: info.returnSort },
             span,
           );
           break;
         }
 
-        if (statement.kind === "sort") {
-          families.push({
-            class: annotation.class,
-            juxtaposed: annotation.juxtaposed,
-            letters: annotation.letters,
-            subscripts: annotation.subscripts,
-            target: { kind: "sort", sort: statement.name },
-          });
-        } else if (statement.kind === "term") {
-          families.push({
-            class: annotation.class,
-            juxtaposed: annotation.juxtaposed,
-            letters: annotation.letters,
-            subscripts: annotation.subscripts,
-            target: { kind: "template", term: statement.name },
-          });
-        } else {
-          report(diagnostics, "family_target", {}, span);
-        }
+        elidedBySort.set(info.returnSort, info.name);
+        terms.set(info.name, { ...info, elided: true });
         break;
       }
 
@@ -468,6 +524,14 @@ export function parseSpec(source: string): SpecParse {
         { name: info.returnSort },
         info.span,
       );
+    }
+  }
+
+  for (const sort of sorts.values()) {
+    for (const token of sort.vars) {
+      if (terms.has(token)) {
+        report(diagnostics, "vars_term_conflict", { token }, sort.span);
+      }
     }
   }
 
@@ -625,7 +689,6 @@ export function parseSpec(source: string): SpecParse {
       coercions,
       delimiters: { left: delimitersLeft, right: delimitersRight },
       display: { dropOuterParens, rotateBrackets },
-      families,
       groupingPairs,
       lints,
       notations,

@@ -12,9 +12,13 @@ import { parseSpec, SurfaceLanguage } from "../src/index";
  *   - carnap-server `tests/truth-table-logic.test.ts` (Carnap's `prop`,
  *     `src/worker/exercises/truth-table/logic/formula.ts`).
  *
- * One deliberate deviation, marked below: `a != b` parses to the `neq`
- * def (whose definiens is the negated identity) rather than eagerly to
- * `not(ideq(...))` — MM0's way of saying "sugar" is a definition.
+ * Deliberate deviations, marked below: `a != b` parses to the `neq` def
+ * (whose definiens is the negated identity) rather than eagerly to
+ * `not(ideq(...))` — MM0's way of saying "sugar" is a definition; and
+ * subscripted atoms (`F_12`, `P0`) are gone — the lexicon is MM0's finite
+ * vocabulary of declared names. A bare letter is its seq-taking
+ * declaration applied to the elided empty sequence, so the trees below
+ * read `(P snil)` where the incumbents had an atom node.
  */
 
 async function load(name: string): Promise<{
@@ -119,36 +123,34 @@ async function propFails(source: string) {
 }
 
 describe("forallx Calgary 2019: atoms and terms", () => {
-  test("a bare predicate letter is a sentence letter", async () => {
-    expect(await calgary("P")).toBe("P");
+  test("a bare predicate letter is the elided empty sequence", async () => {
+    expect(await calgary("P")).toBe("(P snil)");
   });
 
   test("predicates take parenthesized arguments", async () => {
-    expect(await calgary("R(a,b)")).toBe("(R (scomma a b))");
-    expect(await calgary("Ax_1R(x_1,a)")).toBe(
-      "(all x_1 (R (scomma x_1 a)))",
-    );
+    expect(await calgary("R(a,b)")).toBe("(R (scomma (a snil) (b snil)))");
   });
 
-  test("a subscript needs digits and joins the symbol's name", async () => {
-    expect(await calgary("F_12(a)")).toBe("(F_12 a)");
-    expect((await calgaryFails("F_")).id).toBe("unrecognized_character");
+  test("subscripts are no longer part of the lexicon", async () => {
+    // A deliberate deviation: the incumbent lexed `F_12` as one atom. The
+    // lexicon is now MM0's finite vocabulary, and `_` is nothing.
+    expect((await calgaryFails("F_12(a)")).id).toBe("unrecognized_character");
   });
 
   test("a lowercase letter is a function only when arguments follow", async () => {
-    expect(await calgary("f(a) = b")).toBe("(ideq (f a) b)");
-    expect(await calgary("f = b")).toBe("(ideq f b)");
+    expect(await calgary("f(a) = b")).toBe("(ideq (f (a snil)) (b snil))");
+    expect(await calgary("f = b")).toBe("(ideq (f snil) (b snil))");
   });
 
   test("functions nest", async () => {
     expect(await calgary("f(g(a),b) = c")).toBe(
-      "(ideq (f (scomma (g a) b)) c)",
+      "(ideq (f (scomma (g (a snil)) (b snil))) (c snil))",
     );
   });
 
   test("inequality is the neq definition (sugar by def, not by parse)", async () => {
-    expect(await calgary("a != b")).toBe("(neq a b)");
-    expect(await calgary("a ≠ b")).toBe("(neq a b)");
+    expect(await calgary("a != b")).toBe("(neq (a snil) (b snil))");
+    expect(await calgary("a ≠ b")).toBe("(neq (a snil) (b snil))");
   });
 
   test("boolean constants are sentences", async () => {
@@ -176,16 +178,17 @@ describe("forallx Calgary 2019: quantifiers", () => {
   });
 
   test("a quantifier letter with no variable after it is a sentence letter", async () => {
-    expect(await calgary("A")).toBe("A");
-    expect(await calgary("A /\\ E")).toBe("(and A E)");
-    expect(await calgary("A_1(b)")).toBe("(A_1 b)");
+    expect(await calgary("A")).toBe("(A snil)");
+    expect(await calgary("A /\\ E")).toBe("(and (A snil) (E snil))");
     expect(await calgary("ExE(x)")).toBe("(ex x (E x))");
   });
 
   test("a quantifier's scope is the primary that follows it", async () => {
-    expect(await calgary("AxF(x) -> G(a)")).toBe("(imp (all x (F x)) (G a))");
+    expect(await calgary("AxF(x) -> G(a)")).toBe(
+      "(imp (all x (F x)) (G (a snil)))",
+    );
     expect(await calgary("Ax(F(x) -> G(a))")).toBe(
-      "(all x (imp (F x) (G a)))",
+      "(all x (imp (F x) (G (a snil))))",
     );
   });
 
@@ -204,12 +207,12 @@ describe("forallx Calgary 2019: quantifiers", () => {
     expect(await calgary("AxEy~R(x,y)")).toBe(
       "(all x (ex y (not (R (scomma x y)))))",
     );
-    expect(await calgary("~~P")).toBe("(not (not P))");
+    expect(await calgary("~~P")).toBe("(not (not (P snil)))");
     expect(await calgary("~AxF(x)")).toBe("(not (all x (F x)))");
   });
 
   test("negation scopes over a primary only", async () => {
-    expect(await calgary("~P /\\ Q")).toBe("(and (not P) Q)");
+    expect(await calgary("~P /\\ Q")).toBe("(and (not (P snil)) (Q snil))");
   });
 
   test("a variable must follow the quantifier symbol", async () => {
@@ -241,17 +244,25 @@ describe("forallx Calgary 2019: free variables", () => {
 
 describe("forallx Calgary 2019: precedence and association", () => {
   test("conjunction and disjunction share one rung, left-associatively", async () => {
-    expect(await calgary("P /\\ Q \\/ R")).toBe("(or (and P Q) R)");
-    expect(await calgary("P \\/ Q /\\ R")).toBe("(and (or P Q) R)");
-    expect(await calgary("P /\\ Q /\\ R")).toBe("(and (and P Q) R)");
+    expect(await calgary("P /\\ Q \\/ R")).toBe(
+      "(or (and (P snil) (Q snil)) (R snil))",
+    );
+    expect(await calgary("P \\/ Q /\\ R")).toBe(
+      "(and (or (P snil) (Q snil)) (R snil))",
+    );
+    expect(await calgary("P /\\ Q /\\ R")).toBe(
+      "(and (and (P snil) (Q snil)) (R snil))",
+    );
   });
 
   test("negation binds tighter than any two-place connective", async () => {
-    expect(await calgary("~P \\/ Q")).toBe("(or (not P) Q)");
+    expect(await calgary("~P \\/ Q")).toBe("(or (not (P snil)) (Q snil))");
   });
 
   test("a conditional binds looser than conjunction", async () => {
-    expect(await calgary("P /\\ Q -> R")).toBe("(imp (and P Q) R)");
+    expect(await calgary("P /\\ Q -> R")).toBe(
+      "(imp (and (P snil) (Q snil)) (R snil))",
+    );
   });
 
   test("conditionals and biconditionals refuse to chain", async () => {
@@ -259,7 +270,9 @@ describe("forallx Calgary 2019: precedence and association", () => {
 
     expect(error.id).toBe("chain_refused");
     expect(error.params).toEqual({ operator: "->" });
-    expect(await calgary("P -> (Q -> R)")).toBe("(imp P (imp Q R))");
+    expect(await calgary("P -> (Q -> R)")).toBe(
+      "(imp (P snil) (imp (Q snil) (R snil)))",
+    );
     expect((await calgaryFails("P <-> Q <-> R")).params).toEqual({
       operator: "<->",
     });
@@ -271,8 +284,8 @@ describe("forallx Calgary 2019: precedence and association", () => {
 
 describe("forallx Calgary 2019: parenthesization", () => {
   test("brackets may enclose a two-place compound", async () => {
-    expect(await calgary("(P /\\ Q)")).toBe("(and P Q)");
-    expect(await calgary("[P /\\ Q]")).toBe("(and P Q)");
+    expect(await calgary("(P /\\ Q)")).toBe("(and (P snil) (Q snil))");
+    expect(await calgary("[P /\\ Q]")).toBe("(and (P snil) (Q snil))");
   });
 
   test("brackets around anything else are a mistake, not noise", async () => {
@@ -293,9 +306,9 @@ describe("forallx Calgary 2019: parenthesization", () => {
   });
 
   test("argument lists are not subject to the binary-only rule", async () => {
-    expect(await calgary("R(a,b)")).toBe("(R (scomma a b))");
+    expect(await calgary("R(a,b)")).toBe("(R (scomma (a snil) (b snil)))");
     expect(await calgary("Ax(R(x,a) -> F(x))")).toBe(
-      "(all x (imp (R (scomma x a)) (F x)))",
+      "(all x (imp (R (scomma x (a snil))) (F x)))",
     );
   });
 });
@@ -346,11 +359,15 @@ describe("forallx Calgary 2019: errors a writer will actually hit", () => {
 });
 
 describe("Carnap prop: atoms", () => {
-  test("either case, with bare digit subscripts", async () => {
+  test("single letters of either case", async () => {
     expect(await prop("P")).toBe("P");
     expect(await prop("p")).toBe("p");
-    expect(await prop("P0")).toBe("P0");
-    expect(await prop("R12 /\\ q3")).toBe("(and R12 q3)");
+  });
+
+  test("bare digit subscripts are gone — a deliberate deviation", async () => {
+    // The incumbent lexed `P0` as one atom; the lexicon is now MM0's
+    // finite vocabulary of declared names, and a digit is nothing.
+    expect((await propFails("P0")).id).toBe("unrecognized_character");
   });
 });
 

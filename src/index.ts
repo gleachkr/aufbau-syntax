@@ -5,11 +5,7 @@
  */
 
 export type { Diagnostic, Span } from "./diagnostics";
-export {
-  boundVariableBinders,
-  elaboratedDeclarations,
-  stripSyntaxAnnotations,
-} from "./engine";
+export { boundVariableBinders, stripSyntaxAnnotations } from "./engine";
 export type {
   ParseFailure,
   ParseResult,
@@ -30,7 +26,6 @@ export type {
 } from "./reader/annotations";
 export type {
   CoercionInfo,
-  LetterFamily,
   NotationInfo,
   SortInfo,
   Spec,
@@ -57,7 +52,7 @@ export type {
   TypeRef,
 } from "./reader/statements";
 export { parseStatements } from "./reader/statements";
-export type { Reading, ScanPoint } from "./scan";
+export type { NameRef, Reading, ScanPoint } from "./scan";
 export { Scanner } from "./scan";
 export type { AppTerm, Fixity, Term, VariableTerm } from "./term";
 export { walkTerm } from "./term";

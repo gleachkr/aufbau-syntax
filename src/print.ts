@@ -12,8 +12,9 @@
  * **Engine** is what the Aufbau compiler's own math parser reads: the same
  * canonical spellings, every token whitespace-separated, every compound
  * operand parenthesized, and coercion wrappers omitted (the engine
- * re-inserts them). Elaborated letters print as constructor application —
- * `F (x , y)` — which is valid at any slot once parenthesized.
+ * re-inserts them). Lexicon names print as constructor application —
+ * `F ((x , y))`, `P (snil)` — which is valid at any slot once
+ * parenthesized, and elided arguments are written out in full.
  *
  * Display mode presumes the spec's term-level infixes (identity, argument
  * commas) bind tighter than its prefixes, as every textbook's do; a spec
@@ -65,73 +66,10 @@ function render(lang: SurfaceLanguage, term: Term, mode: PrintMode): string {
     }
   }
 
-  // An elaborated letter: the name, each argument in its own parentheses.
-  // In engine mode this is constructor application, whose arguments must
-  // be expression(max) — parenthesized unless they already are.
-  if (term.family !== null) {
-    const familyInfo = lang.familyInfo.get(term.family);
-
-    // A juxtaposed family writes its leaves straight on — `Rxy` — so the
-    // combiner tree flattens and the parentheses disappear.
-    if (
-      mode === "display" &&
-      familyInfo?.family.juxtaposed === true &&
-      term.args.length === 1
-    ) {
-      const leaves: string[] = [];
-      const flatten = (node: Term): void => {
-        const bare = uncoerced(lang, node);
-
-        if (
-          bare.kind === "app" &&
-          familyInfo.combiner !== null &&
-          bare.term === familyInfo.combiner.name
-        ) {
-          for (const inner of bare.args) {
-            flatten(inner);
-          }
-
-          return;
-        }
-
-        leaves.push(render(lang, bare, mode));
-      };
-
-      const seed = term.args[0];
-
-      if (seed !== undefined) {
-        flatten(seed);
-      }
-
-      return `${term.term}${leaves.join("")}`;
-    }
-
-    if (mode === "engine") {
-      const args = term.args.map((arg) => {
-        const rendered = render(lang, arg, mode);
-
-        return rendered.startsWith("(") ? rendered : `(${rendered})`;
-      });
-
-      return [term.term, ...args].join(" ");
-    }
-
-    const args = term.args
-      .map((arg) => `(${render(lang, arg, mode)})`)
-      .join("");
-
-    return `${term.term}${args}`;
-  }
-
   const notation = lang.canonical.get(term.term);
 
   if (notation === undefined) {
-    // No notation anywhere — fall back to application shape.
-    const args = term.args
-      .map((arg) => `(${render(lang, arg, mode)})`)
-      .join(" ");
-
-    return term.args.length === 0 ? term.term : `${term.term} ${args}`;
+    return renderApplication(lang, term, mode);
   }
 
   if (notation.form === "simple" && notation.fixity !== "prefix") {
@@ -183,6 +121,88 @@ function render(lang: SurfaceLanguage, term: Term, mode: PrintMode): string {
   }
 
   return pieces.join("");
+}
+
+/**
+ * A term with no notation prints as application — the lexicon's shape.
+ * Display elides an `@syntax elided` argument (bare `P`), flattens a
+ * juxtaposed argument into glued leaves (`Rxy`), and otherwise sets each
+ * argument in its own parentheses (`R(a,b)`, the comma coming from the
+ * argument's own notation). Engine mode writes application in full —
+ * `P (snil)`, `R ((x , y))` — which the compiler reads at expression(max).
+ */
+function renderApplication(
+  lang: SurfaceLanguage,
+  term: Term & { kind: "app" },
+  mode: PrintMode,
+): string {
+  if (term.args.length === 0) {
+    return term.term;
+  }
+
+  if (mode === "engine") {
+    const args = term.args.map((arg) => {
+      const rendered = render(lang, arg, mode);
+
+      return rendered.startsWith("(") ? rendered : `(${rendered})`;
+    });
+
+    return [term.term, ...args].join(" ");
+  }
+
+  const sole = term.args.length === 1 ? term.args[0] : undefined;
+
+  if (sole !== undefined) {
+    const bare = uncoerced(lang, sole);
+    const elided = lang.elidedOf.get(sole.sort);
+
+    if (
+      elided !== undefined &&
+      bare.kind === "app" &&
+      bare.term === elided.name
+    ) {
+      return term.term;
+    }
+
+    const combiner = lang.juxtaposedOf.get(sole.sort);
+
+    if (combiner !== undefined) {
+      const groupers = lang.spec.groupingPairs.flat();
+      const leaves: string[] = [];
+      const flatten = (node: Term): void => {
+        const at = uncoerced(lang, node);
+
+        if (at.kind === "app" && at.term === combiner.name) {
+          for (const inner of at.args) {
+            flatten(inner);
+          }
+
+          return;
+        }
+
+        leaves.push(render(lang, at, mode));
+      };
+
+      flatten(sole);
+
+      // Glue only when every leaf is itself glueable — a single token the
+      // parser would consume back. A compound element falls back to the
+      // parenthesized form.
+      const simple = leaves.every(
+        (leaf) => !/\s/.test(leaf) && !groupers.some((g) => leaf.includes(g)),
+      );
+
+      if (simple) {
+        return `${term.term}${leaves.join("")}`;
+      }
+    }
+  }
+
+  const args = term.args
+    .map((arg) => `(${render(lang, arg, mode)})`)
+    .join("");
+
+  return `${term.term}${args}`;
 }
 
 /** The term with any coercion wrappers peeled off — what actually prints. */

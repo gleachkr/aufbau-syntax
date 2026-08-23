@@ -3,14 +3,13 @@
  *
  * The engine rejects annotations it does not know, so a spec file goes to
  * it with the `@syntax` lines stripped — the library owns that boundary.
- * And because letter families are schemas (the spec declares `_pred`, a
- * student writes `F_12`), whatever a term actually used must be declared
- * before the engine can parse text mentioning it: `elaboratedDeclarations`
- * writes those `term` statements, and `boundVariableBinders` the `{x: var}`
- * binder list a theorem statement needs.
+ * Everything else in the spec is already the engine's language: the
+ * lexicon is ordinary term declarations, and variables are `@vars` pools,
+ * which the engine understands natively. `boundVariableBinders` writes
+ * the `{x: var}` binder list a theorem statement needs for the variables
+ * (bound or free — Calgary's names included) a formula mentions.
  */
 
-import type { SurfaceLanguage } from "./parse";
 import type { Term } from "./term";
 import { walkTerm } from "./term";
 
@@ -23,49 +22,9 @@ export function stripSyntaxAnnotations(source: string): string {
 }
 
 /**
- * One `term` declaration per elaborated letter the terms use, shaped like
- * the letter's template: `term F_12 (s: seq): wff;`.
- */
-export function elaboratedDeclarations(
-  lang: SurfaceLanguage,
-  terms: readonly Term[],
-): string {
-  const declarations = new Map<string, string>();
-
-  for (const term of terms) {
-    walkTerm(term, (node) => {
-      if (node.kind !== "app" || node.family === null) {
-        return;
-      }
-
-      const info = lang.familyInfo.get(node.family);
-
-      if (info === undefined || declarations.has(node.term)) {
-        return;
-      }
-
-      const binders = info.argBinders
-        .map((binder) =>
-          "sort" in binder.type
-            ? ` (${binder.name}: ${binder.type.sort})`
-            : "",
-        )
-        .join("");
-
-      declarations.set(
-        node.term,
-        `term ${node.term}${binders}: ${info.sort};`,
-      );
-    });
-  }
-
-  return [...declarations.values()].join("\n");
-}
-
-/**
- * The bound-variable binder list for a theorem statement over these terms,
- * e.g. `{x y: var}` — one group per sort, empty string when there are no
- * variables.
+ * The variable binder list for a theorem statement over these terms,
+ * e.g. `{x y: var} {a: name}` — one group per sort, empty string when
+ * there are no variables.
  */
 export function boundVariableBinders(terms: readonly Term[]): string {
   const bySort = new Map<string, Set<string>>();

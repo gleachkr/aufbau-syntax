@@ -1,26 +1,35 @@
 /**
  * The surface scanner: character-level maximal munch over a spec's token
- * vocabulary and letter families.
+ * vocabulary and lexicon names.
  *
  * Where MM0's own lexer splits math strings on whitespace and single-byte
  * delimiters, students write textbook notation with no spaces at all —
  * `∀xF(x)`, `~~P`, `AxEy~R(x,y)`. So this scanner asks, at each position:
  * which declared notation token starts here (longest match wins), and which
- * letter families claim this character (with its subscript, when the family
- * writes them)? A position can answer *both* — Calgary's `A` is at once a
- * spelling of ∀ and a predicate letter — so the scanner reports alternative
- * readings, each with its own length, and the parser picks by context.
+ * lexicon name? A position can answer *both* — Calgary's `A` is at once a
+ * spelling of ∀ and the predicate letter A — so the scanner reports
+ * alternative readings, each with its own length, and the parser picks by
+ * context.
+ *
+ * The name vocabulary is derived, not annotated: every token in a sort's
+ * `@vars` pool, and every declared term that has no notation of its own,
+ * binds nothing, and is not a coercion. A term *with* a notation is
+ * spelled by that notation; a term without one is spelled by its name —
+ * MM0's own application rule, read character-level.
  */
 
 import type { Span } from "./diagnostics";
-import type { LetterFamily, Spec } from "./reader/spec";
+import type { Spec } from "./reader/spec";
+
+export type NameRef =
+  | { readonly kind: "term"; readonly term: string }
+  | { readonly kind: "var"; readonly sort: string };
 
 export type Reading =
   | {
-      readonly kind: "letter";
-      readonly family: LetterFamily;
-      /** The full name, subscript included: `F_12`, `P0`. */
+      readonly kind: "name";
       readonly name: string;
+      readonly ref: NameRef;
       readonly length: number;
     }
   | {
@@ -32,25 +41,25 @@ export type Reading =
 export interface ScanPoint {
   /** Position after leading whitespace; readings start here. */
   readonly start: number;
-  /** Longest-first notation reading, then letter readings. Empty at end of
-   * input or on an unrecognized character. */
+  /** Longest-first notation reading, then the longest name reading. Empty
+   * at end of input or on an unrecognized character. */
   readonly readings: readonly Reading[];
   readonly atEnd: boolean;
-}
-
-function isDigit(ch: string): boolean {
-  return ch >= "0" && ch <= "9";
 }
 
 export class Scanner {
   /** Notation and grouping tokens, longest first. */
   private readonly tokens: readonly string[];
-  private readonly families: readonly LetterFamily[];
+  /** Lexicon names, longest first, each with what it refers to. */
+  private readonly names: readonly (readonly [string, NameRef])[];
 
   constructor(spec: Spec) {
     const vocabulary = new Set<string>();
+    const notated = new Set<string>();
 
     for (const notation of spec.notations) {
+      notated.add(notation.term);
+
       if (notation.form === "simple") {
         vocabulary.add(notation.token);
       } else {
@@ -68,13 +77,36 @@ export class Scanner {
     }
 
     this.tokens = [...vocabulary].sort((a, b) => b.length - a.length);
-    this.families = spec.families;
+
+    const coercions = new Set(spec.coercions.map((c) => c.name));
+    const names = new Map<string, NameRef>();
+
+    for (const sort of spec.sorts.values()) {
+      for (const token of sort.vars) {
+        names.set(token, { kind: "var", sort: sort.name });
+      }
+    }
+
+    for (const term of spec.terms.values()) {
+      if (
+        !notated.has(term.name) &&
+        !coercions.has(term.name) &&
+        !term.binders.some((binder) => binder.binds) &&
+        !names.has(term.name)
+      ) {
+        names.set(term.name, { kind: "term", term: term.name });
+      }
+    }
+
+    this.names = [...names.entries()].sort(
+      (a, b) => b[0].length - a[0].length,
+    );
   }
 
   /**
    * The alternative readings at `position` in `text`, after skipping
    * whitespace. The list is ordered: the longest matching notation token
-   * first, then one letter reading per claiming family.
+   * first, then the longest matching name.
    */
   at(text: string, position: number): ScanPoint {
     let start = position;
@@ -96,43 +128,11 @@ export class Scanner {
       }
     }
 
-    const ch = text[start] ?? "";
-
-    for (const family of this.families) {
-      if (!family.letters.has(ch)) {
-        continue;
+    for (const [name, ref] of this.names) {
+      if (text.startsWith(name, start)) {
+        readings.push({ kind: "name", name, ref, length: name.length });
+        break;
       }
-
-      let length = 1;
-
-      if (family.subscripts === "underscore") {
-        // `x_1` — the underscore joins only when digits follow, so `F_` is
-        // the letter F and then a stray underscore, as in Carnap.
-        if (text[start + 1] === "_" && isDigit(text[start + 2] ?? "")) {
-          let end = start + 2;
-
-          while (isDigit(text[end] ?? "")) {
-            end += 1;
-          }
-
-          length = end - start;
-        }
-      } else if (family.subscripts === "bare") {
-        let end = start + 1;
-
-        while (isDigit(text[end] ?? "")) {
-          end += 1;
-        }
-
-        length = end - start;
-      }
-
-      readings.push({
-        kind: "letter",
-        family,
-        name: text.slice(start, start + length),
-        length,
-      });
     }
 
     return { start, readings, atEnd: false };

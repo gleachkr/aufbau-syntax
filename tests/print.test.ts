@@ -97,7 +97,7 @@ describe("Calgary display", () => {
   test("predicates keep their parentheses; a sentence letter has none", async () => {
     expect(await display("R(a,b)")).toBe("R(a,b)");
     expect(await display("P")).toBe("P");
-    expect(await display("F_12(a)")).toBe("F_12(a)");
+    expect(await display("f(a) = b")).toBe("f(a)=b");
   });
 
   test("the display form is itself legal input, and stable", async () => {
@@ -126,10 +126,10 @@ describe("Calgary display", () => {
 });
 
 describe("Calgary engine mode", () => {
-  test("spaced, fully parenthesized, coercion-free", async () => {
+  test("spaced, fully parenthesized, coercion-free, elision written out", async () => {
     expect(await engine("AxF(x)")).toBe("(∀ x (F (x)))");
-    expect(await engine("P /\\ Q")).toBe("(P ∧ Q)");
-    expect(await engine("~P")).toBe("(¬ P)");
+    expect(await engine("P /\\ Q")).toBe("((P (snil)) ∧ (Q (snil)))");
+    expect(await engine("~P")).toBe("(¬ (P (snil)))");
   });
 
   test("engine text re-parses to the same tree", async () => {
@@ -161,13 +161,13 @@ describe("prop display", () => {
     expect(await propDisplay("P /\\ Q")).toBe("(P /\\ Q)");
     expect(await propDisplay("~P")).toBe("~P");
     expect(await propDisplay("P /\\ Q \\/ R")).toBe("((P /\\ Q) \\/ R)");
-    expect(await propDisplay("~(P -> Q0)")).toBe("~(P -> Q0)");
+    expect(await propDisplay("~(P -> Q)")).toBe("~(P -> Q)");
   });
 
   test("prop display round-trips", async () => {
     const { language } = await propReady;
 
-    for (const source of ["P /\\ Q \\/ R", "~(P <-> Q) -> r2"]) {
+    for (const source of ["P /\\ Q \\/ R", "~(P <-> Q) -> r"]) {
       const parsed = language.parse(source);
 
       expect(parsed.ok).toBe(true);

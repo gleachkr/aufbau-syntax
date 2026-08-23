@@ -12,11 +12,12 @@
  *   3. **Lints** — the closed set of post-parse checks
  *      (`parenthesize-binary-only`, `closed-sentences`).
  *
- * Two survivable deviations, both surface-side supersets: an elaborated
- * letter (nullary or applied to grouped arguments) counts as
- * `expression(max)`, where MM0 puts constructor application at 1024; and a
- * token that is both a notation and a family letter (Calgary's `A`) is
- * disambiguated by backtracking, notation reading first.
+ * Two survivable deviations, both surface-side supersets: a lexicon name
+ * (nullary, elided-bare, or applied to parenthesized or juxtaposed
+ * arguments) counts as `expression(max)`, where MM0 puts constructor
+ * application at 1024; and a token that is both a notation and a lexicon
+ * name (Calgary's `A`) is disambiguated by backtracking, notation reading
+ * first.
  *
  * mm0.md's slot-precedence rules are used exactly: a prefix notation's
  * intermediate arguments parse at max and its last at the notation's
@@ -27,12 +28,7 @@
  */
 
 import { type Diagnostic, diagnostic, type Span } from "./diagnostics";
-import type {
-  LetterFamily,
-  NotationInfo,
-  Spec,
-  TermInfo,
-} from "./reader/spec";
+import type { NotationInfo, Spec, TermInfo } from "./reader/spec";
 import type { Binder, TypeRef } from "./reader/statements";
 import { type Reading, Scanner } from "./scan";
 import { desugar, remapSpan } from "./sugar";
@@ -95,20 +91,6 @@ interface GeneralEntry {
 
 type HeadEntry = GeneralEntry | PrefixEntry;
 
-interface FamilyInfo {
-  readonly family: LetterFamily;
-  /** Regular binders of the template; empty for a nullary or a variable. */
-  readonly argBinders: readonly Binder[];
-  readonly sort: string;
-  readonly isVariable: boolean;
-  /**
-   * For a juxtaposed family whose template takes one argument: the binary
-   * constructor that folds several juxtaposed leaves into that argument
-   * (Calgary's `scomma`), found by shape in the spec.
-   */
-  readonly combiner: TermInfo | null;
-}
-
 export interface ParseSuccess {
   readonly ok: true;
   readonly term: Term;
@@ -138,7 +120,12 @@ export class SurfaceLanguage {
   readonly infixes = new Map<string, InfixEntry>();
   readonly closeOf = new Map<string, string>();
   readonly closers = new Set<string>();
-  readonly familyInfo = new Map<string, FamilyInfo>();
+  /** Per sort, its `@syntax juxtaposed` combiner — adjacency's meaning. */
+  readonly juxtaposedOf = new Map<string, TermInfo>();
+  /** Per sort, its `@syntax elided` term — the unwritten argument. */
+  readonly elidedOf = new Map<string, TermInfo>();
+  /** Sorts some quantifier binds — whose variables *can* be captured. */
+  readonly bindableSorts = new Set<string>();
   readonly provableSort: string | null;
   /** Per term, its last-declared notation — the canonical spelling. */
   readonly canonical = new Map<string, NotationInfo>();
@@ -232,46 +219,20 @@ export class SurfaceLanguage {
       this.closers.add(close);
     }
 
-    for (const family of spec.families) {
-      if (family.target.kind === "sort") {
-        this.familyInfo.set(family.class, {
-          family,
-          argBinders: [],
-          sort: family.target.sort,
-          isVariable: true,
-          combiner: null,
-        });
-        continue;
+    for (const term of spec.terms.values()) {
+      if (term.juxtaposed) {
+        this.juxtaposedOf.set(term.returnSort, term);
       }
 
-      const template = spec.terms.get(family.target.term);
-
-      if (template === undefined) {
-        continue;
+      if (term.elided) {
+        this.elidedOf.set(term.returnSort, term);
       }
 
-      const argBinders = template.binders.filter((binder) => !binder.binds);
-      const argSort =
-        argBinders.length === 1 ? binderSort(argBinders[0]) : "";
-      const combiner =
-        [...spec.terms.values()].find((candidate) => {
-          const regular = candidate.binders.filter((b) => !b.binds);
-
-          return (
-            candidate.binders.length === 2 &&
-            regular.length === 2 &&
-            candidate.returnSort === argSort &&
-            regular.every((b) => binderSort(b) === argSort)
-          );
-        }) ?? null;
-
-      this.familyInfo.set(family.class, {
-        family,
-        argBinders,
-        sort: template.returnSort,
-        isVariable: false,
-        combiner,
-      });
+      for (const binder of term.binders) {
+        if (binder.binds) {
+          this.bindableSorts.add(binderSort(binder));
+        }
+      }
     }
 
     for (const notation of spec.notations) {
@@ -548,7 +509,6 @@ class Parse {
       wrapped = {
         kind: "app",
         term: name,
-        family: null,
         args: [wrapped],
         sort: info?.returnSort ?? target,
         span: wrapped.span,
@@ -627,7 +587,6 @@ class Parse {
       left = {
         kind: "app",
         term: entry.info.name,
-        family: null,
         args: [coercedLeft, coercedRight],
         sort: entry.info.returnSort,
         span: { start: left.span.start, end: right.span.end },
@@ -699,7 +658,7 @@ class Parse {
   }
 
   private isViablePrimary(reading: Reading): boolean {
-    if (reading.kind === "letter") {
+    if (reading.kind === "name") {
       return true;
     }
 
@@ -714,8 +673,8 @@ class Parse {
     reading: Reading,
     min: number,
   ): Term | null {
-    if (reading.kind === "letter") {
-      return this.parseLetter(start, reading);
+    if (reading.kind === "name") {
+      return this.parseName(start, reading);
     }
 
     const close = this.lang.closeOf.get(reading.token);
@@ -844,7 +803,6 @@ class Parse {
     return {
       kind: "app",
       term: entry.info.name,
-      family: null,
       args,
       sort: entry.info.returnSort,
       span: {
@@ -948,7 +906,6 @@ class Parse {
     return {
       kind: "app",
       term: entry.info.name,
-      family: null,
       args,
       sort: entry.info.returnSort,
       span: { start, end: args[args.length - 1]?.span.end ?? this.position },
@@ -976,13 +933,11 @@ class Parse {
   private expectBoundVariable(sort: string): VariableTerm | null {
     const point = this.lang.scanner.at(this.text, this.position);
     const reading = point.readings.find(
-      (r): r is Reading & { kind: "letter" } =>
-        r.kind === "letter" &&
-        (this.lang.familyInfo.get(r.family.class)?.isVariable ?? false) &&
-        this.lang.familyInfo.get(r.family.class)?.sort === sort,
+      (r): r is Reading & { kind: "name" } =>
+        r.kind === "name" && r.ref.kind === "var" && r.ref.sort === sort,
     );
 
-    if (reading === undefined || reading.kind !== "letter") {
+    if (reading === undefined || reading.kind !== "name") {
       return this.report(
         "expected_variable",
         {},
@@ -1005,11 +960,36 @@ class Parse {
     };
   }
 
-  private parseLetter(
+  /**
+   * A lexicon name: a `@vars` token (a variable of its sort), or a
+   * declared term with no notation of its own — a sentence letter,
+   * predicate, function symbol, or constant. A term's arguments come
+   * parenthesized (application syntax, so the argument is not marked
+   * `grouped` and the binary-only lint does not apply inside; the
+   * canonical pair is always the first declared one), or juxtaposed when
+   * the argument sort has an `@syntax juxtaposed` combiner, or not at all
+   * when it has an `@syntax elided` term. Context settles the `A`-as-∀
+   * ambiguity exactly as in Carnap: the quantifier reading was tried
+   * first, and fell through to here only if it failed.
+   */
+  private parseName(
     start: number,
-    reading: Reading & { kind: "letter" },
+    reading: Reading & { kind: "name" },
   ): Term | null {
-    const info = this.lang.familyInfo.get(reading.family.class);
+    this.position = start + reading.length;
+
+    if (reading.ref.kind === "var") {
+      return {
+        kind: "variable",
+        name: reading.name,
+        sort: reading.ref.sort,
+        span: { start, end: this.position },
+        grouped: false,
+        binder: false,
+      };
+    }
+
+    const info = this.lang.spec.terms.get(reading.ref.term);
 
     if (info === undefined) {
       return this.report(
@@ -1019,156 +999,11 @@ class Parse {
       );
     }
 
-    this.position = start + reading.length;
-
-    if (info.isVariable) {
-      return {
-        kind: "variable",
-        name: reading.name,
-        sort: info.sort,
-        span: { start, end: this.position },
-        grouped: false,
-        binder: false,
-      };
-    }
-
-    // A juxtaposed family glues its arguments straight on — `Fxy`, the
-    // pre-2019 forallx shape. Leaves (variables and nullary letters) are
-    // consumed greedily while they coerce into the argument sort; several
-    // fold through the discovered combiner. Context settles the `A`-as-∀
-    // ambiguity exactly as in Carnap: the quantifier reading was tried
-    // first, and fell through to here only if it failed.
-    if (
-      info.family.juxtaposed &&
-      info.argBinders.length === 1 &&
-      !info.isVariable
-    ) {
-      const target = binderSort(info.argBinders[0]);
-      const leaves: Term[] = [];
-
-      for (;;) {
-        const point = this.lang.scanner.at(this.text, this.position);
-        const leafReading = point.readings.find(
-          (r): r is Reading & { kind: "letter" } => {
-            if (r.kind !== "letter") {
-              return false;
-            }
-
-            const leafInfo = this.lang.familyInfo.get(r.family.class);
-
-            if (
-              leafInfo === undefined ||
-              (!leafInfo.isVariable && leafInfo.argBinders.length > 0)
-            ) {
-              return false;
-            }
-
-            return this.lang.coerce(leafInfo.sort, target) !== null;
-          },
-        );
-
-        if (leafReading === undefined || leafReading.kind !== "letter") {
-          break;
-        }
-
-        const leafInfo = this.lang.familyInfo.get(leafReading.family.class);
-
-        if (leafInfo === undefined) {
-          break;
-        }
-
-        this.position = point.start + leafReading.length;
-
-        const span = { start: point.start, end: this.position };
-        const leaf: Term = leafInfo.isVariable
-          ? {
-              kind: "variable",
-              name: leafReading.name,
-              sort: leafInfo.sort,
-              span,
-              grouped: false,
-              binder: false,
-            }
-          : {
-              kind: "app",
-              term: leafReading.name,
-              family: leafReading.family.class,
-              args: [],
-              sort: leafInfo.sort,
-              span,
-              grouped: false,
-              fixity: null,
-              prec: null,
-              token: null,
-            };
-        const coerced = this.coerceOrReport(leaf, target);
-
-        if (coerced === null) {
-          return null;
-        }
-
-        leaves.push(coerced);
-      }
-
-      const first = leaves[0];
-
-      if (first === undefined) {
-        return this.report(
-          "expected_formula_found",
-          { token: reading.name },
-          { start, end: start + reading.length },
-        );
-      }
-
-      let folded = first;
-
-      for (const leaf of leaves.slice(1)) {
-        const combiner = info.combiner;
-
-        if (combiner === null) {
-          return this.report(
-            "spec_notation_incomplete",
-            { term: reading.name },
-            { start, end: this.position },
-          );
-        }
-
-        folded = {
-          kind: "app",
-          term: combiner.name,
-          family: null,
-          args: [folded, leaf],
-          sort: combiner.returnSort,
-          span: { start: folded.span.start, end: leaf.span.end },
-          grouped: false,
-          fixity: null,
-          prec: null,
-          token: null,
-        };
-      }
-
-      return {
-        kind: "app",
-        term: reading.name,
-        family: reading.family.class,
-        args: [folded],
-        sort: info.sort,
-        span: { start, end: this.position },
-        grouped: false,
-        fixity: null,
-        prec: null,
-        token: null,
-      };
-    }
-
-    // A template with arguments demands them, parenthesized — Calgary's
-    // `predicatesTakeParens`. Argument parentheses are application syntax,
-    // not grouping, so the argument is not marked `grouped` and the
-    // binary-only lint does not apply inside; the canonical pair is always
-    // the first declared one.
+    const argBinders = info.binders.filter((binder) => !binder.binds);
     const args: Term[] = [];
 
-    for (const binder of info.argBinders) {
+    for (const binder of argBinders) {
+      const target = binderSort(binder);
       const point = this.lang.scanner.at(this.text, this.position);
       const open = this.lang.spec.groupingPairs[0]?.[0] ?? "(";
       const close = this.lang.spec.groupingPairs[0]?.[1] ?? ")";
@@ -1176,64 +1011,217 @@ class Parse {
         (r) => r.kind === "token" && r.token === open,
       );
 
-      if (openReading === undefined) {
-        return this.report(
-          "expected_formula_found",
-          { token: reading.name },
-          {
-            start,
-            end: start + reading.length,
-          },
+      if (openReading !== undefined) {
+        this.position = point.start + openReading.length;
+
+        const arg = this.parseExpr(0);
+
+        if (arg === null) {
+          return null;
+        }
+
+        const closePoint = this.lang.scanner.at(this.text, this.position);
+        const closeReading = closePoint.readings.find(
+          (r) => r.kind === "token" && r.token === close,
         );
+
+        if (closeReading === undefined) {
+          return this.report(
+            "expected_bracket",
+            { bracket: close },
+            {
+              start: closePoint.start,
+              end: closePoint.start + 1,
+            },
+          );
+        }
+
+        this.position = closePoint.start + closeReading.length;
+
+        const coerced = this.coerceOrReport(arg, target);
+
+        if (coerced === null) {
+          return null;
+        }
+
+        args.push(coerced);
+        continue;
       }
 
-      this.position = point.start + openReading.length;
+      // Juxtaposed gluing — `Fxy`, the pre-2019 forallx shape. Operands
+      // (self-delimiting single-token expressions) are consumed greedily
+      // while they coerce into the argument sort; several fold through
+      // the sort's declared combiner.
+      const combiner =
+        argBinders.length === 1
+          ? this.lang.juxtaposedOf.get(target)
+          : undefined;
 
-      const arg = this.parseExpr(0);
+      if (combiner !== undefined) {
+        const leaves: Term[] = [];
 
-      if (arg === null) {
-        return null;
+        for (;;) {
+          const leaf = this.glueOperand(target);
+
+          if (leaf === null) {
+            break;
+          }
+
+          leaves.push(leaf);
+        }
+
+        const first = leaves[0];
+
+        if (first !== undefined) {
+          let folded = first;
+
+          for (const leaf of leaves.slice(1)) {
+            folded = {
+              kind: "app",
+              term: combiner.name,
+              args: [folded, leaf],
+              sort: combiner.returnSort,
+              span: { start: folded.span.start, end: leaf.span.end },
+              grouped: false,
+              fixity: null,
+              prec: null,
+              token: null,
+            };
+          }
+
+          args.push(folded);
+          continue;
+        }
+        // No operand at all: fall through to elision, so a bare letter
+        // can still be a sentence letter in a juxtaposed dialect.
       }
 
-      const closePoint = this.lang.scanner.at(this.text, this.position);
-      const closeReading = closePoint.readings.find(
-        (r) => r.kind === "token" && r.token === close,
+      const elided = this.lang.elidedOf.get(target);
+
+      if (elided !== undefined) {
+        args.push({
+          kind: "app",
+          term: elided.name,
+          args: [],
+          sort: elided.returnSort,
+          span: { start, end: start + reading.length },
+          grouped: false,
+          fixity: null,
+          prec: null,
+          token: null,
+        });
+        continue;
+      }
+
+      return this.report(
+        "expected_formula_found",
+        { token: reading.name },
+        { start, end: start + reading.length },
       );
-
-      if (closeReading === undefined) {
-        return this.report(
-          "expected_bracket",
-          { bracket: close },
-          {
-            start: closePoint.start,
-            end: closePoint.start + 1,
-          },
-        );
-      }
-
-      this.position = closePoint.start + closeReading.length;
-
-      const coerced = this.coerceOrReport(arg, binderSort(binder));
-
-      if (coerced === null) {
-        return null;
-      }
-
-      args.push(coerced);
     }
 
     return {
       kind: "app",
       term: reading.name,
-      family: reading.family.class,
       args,
-      sort: info.sort,
+      sort: info.returnSort,
       span: { start, end: this.position },
       grouped: false,
       fixity: null,
       prec: null,
       token: null,
     };
+  }
+
+  /**
+   * One juxtaposed operand: a self-delimiting single-token expression — a
+   * variable, a nullary lexicon name, or a nullary notation (an
+   * empty-set-style constant) — whose sort coerces into the target.
+   * Anything larger (a parenthesized group, a term applied to arguments
+   * of its own) is deliberately not an operand yet: nested juxtaposition
+   * is ambiguous under variadic sequences and stays deferred.
+   */
+  private glueOperand(target: string): Term | null {
+    const point = this.lang.scanner.at(this.text, this.position);
+
+    for (const reading of point.readings) {
+      if (reading.kind === "name") {
+        if (reading.ref.kind === "var") {
+          if (this.lang.coerce(reading.ref.sort, target) === null) {
+            continue;
+          }
+
+          this.position = point.start + reading.length;
+
+          return this.coerceOrReport(
+            {
+              kind: "variable",
+              name: reading.name,
+              sort: reading.ref.sort,
+              span: { start: point.start, end: this.position },
+              grouped: false,
+              binder: false,
+            },
+            target,
+          );
+        }
+
+        const info = this.lang.spec.terms.get(reading.ref.term);
+
+        if (
+          info === undefined ||
+          info.binders.some((binder) => !binder.binds) ||
+          this.lang.coerce(info.returnSort, target) === null
+        ) {
+          continue;
+        }
+
+        this.position = point.start + reading.length;
+
+        return this.coerceOrReport(
+          {
+            kind: "app",
+            term: info.name,
+            args: [],
+            sort: info.returnSort,
+            span: { start: point.start, end: this.position },
+            grouped: false,
+            fixity: null,
+            prec: null,
+            token: null,
+          },
+          target,
+        );
+      }
+
+      const head = this.lang.heads.get(reading.token);
+
+      if (
+        head?.kind === "general" &&
+        head.parts.length === 0 &&
+        head.info.binders.length === 0 &&
+        this.lang.coerce(head.info.returnSort, target) !== null
+      ) {
+        this.position = point.start + reading.length;
+
+        return this.coerceOrReport(
+          {
+            kind: "app",
+            term: head.info.name,
+            args: [],
+            sort: head.info.returnSort,
+            span: { start: point.start, end: this.position },
+            grouped: false,
+            fixity: "general",
+            prec: null,
+            token: reading.token,
+          },
+          target,
+        );
+      }
+    }
+
+    return null;
   }
 
   // ── lints ─────────────────────────────────────────────────────────────
@@ -1245,9 +1233,13 @@ class Parse {
 
     walkTerm(term, (node, bound) => {
       if (node.kind === "variable") {
+        // A leaf of a sort no quantifier binds — a constant from a
+        // `@vars` pool, like Calgary's names — cannot be *free*: freedom
+        // is only meaningful where binding is possible.
         if (
           lints.includes("closed-sentences") &&
           !node.binder &&
+          this.lang.bindableSorts.has(node.sort) &&
           !bound.has(node.name)
         ) {
           this.report("free_variable", { name: node.name }, node.span);

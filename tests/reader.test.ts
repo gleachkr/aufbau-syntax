@@ -71,6 +71,11 @@ describe("reading a real theory", () => {
       spec.sorts.get("var")?.foreignAnnotations.map((a) => a.text),
     ).toEqual(["@vars x y z"]);
 
+    // …and `@vars` is *also* read: the engine's variable pools are the
+    // surface lexicon's variables.
+    expect(spec.sorts.get("var")?.vars).toEqual(["x", "y", "z"]);
+    expect(spec.sorts.get("name")?.vars).toEqual(["a", "b", "c", "d"]);
+
     // Axioms and theorems ride along opaque, annotations intact.
     const axioms = spec.statements.filter(
       (s): s is AssertStatement => s.kind === "axiom",
@@ -88,8 +93,9 @@ describe("@syntax annotations", () => {
   const CALGARYISH = `
 delimiter $ ( ) $;
 provable sort wff;
---| @syntax family var x-z subscripts
+--| @vars x y z
 sort var;
+--| @vars a b c d e
 sort name;
 sort tm;
 sort seq;
@@ -97,13 +103,16 @@ term v2t (x: var): tm;
 coercion v2t: var > tm;
 term t2s (t: tm): seq;
 coercion t2s: tm > seq;
---| @syntax family const a-e
-term _const: name;
 term n2t (a: name): tm;
 coercion n2t: name > tm;
---| @syntax family pred F-H
+--| @syntax elided
+term snil: seq;
+--| @syntax juxtaposed
+term scomma (s t: seq): seq;
+infixl scomma: $,$ prec 10;
 --| @syntax role predicate
-term _pred (s: seq): wff;
+term F (s: seq): wff;
+term G (s: seq): wff;
 --| @syntax role conditional
 term imp (p q: wff): wff;
 infixr imp: $->$ prec 25;
@@ -116,7 +125,7 @@ infixl and: $∧$ prec 30;
 --| @syntax lint parenthesize-binary-only
 --| @syntax lint closed-sentences
 --| @syntax display drop-outer-parens
---| @syntax rewrite $ ?F:pred ?ts:tm+ $ => $ ?F ( ?ts,* ) $
+--| @syntax rewrite $ ?F:wff ?ts:tm+ $ => $ ?F ( ?ts,* ) $
 term all {x: var} (p: wff x): wff;
 prefix all: $∀$ prec 46;
 `;
@@ -126,26 +135,19 @@ prefix all: $∀$ prec 46;
 
     expect(diagnostics).toEqual([]);
 
-    expect(spec.families).toHaveLength(3);
-    expect(spec.families[0]).toMatchObject({
-      class: "var",
-      subscripts: "underscore",
-      target: { kind: "sort", sort: "var" },
+    // The lexicon: `@vars` pools on the sorts, ordinary declarations for
+    // the letters, and the two per-term flags.
+    expect(spec.sorts.get("var")?.vars).toEqual(["x", "y", "z"]);
+    expect(spec.sorts.get("name")?.vars).toEqual(["a", "b", "c", "d", "e"]);
+    expect(spec.terms.get("snil")).toMatchObject({
+      elided: true,
+      juxtaposed: false,
     });
-    expect([...(spec.families[0]?.letters ?? [])].sort()).toEqual([
-      "x",
-      "y",
-      "z",
-    ]);
-    expect(spec.families[1]).toMatchObject({
-      class: "const",
-      subscripts: "none",
-      target: { kind: "template", term: "_const" },
+    expect(spec.terms.get("scomma")).toMatchObject({
+      elided: false,
+      juxtaposed: true,
     });
-    expect(spec.families[2]?.target).toEqual({
-      kind: "template",
-      term: "_pred",
-    });
+    expect(spec.terms.get("F")?.returnSort).toBe("wff");
 
     expect(spec.groupingPairs).toEqual([
       ["(", ")"],
@@ -161,7 +163,7 @@ prefix all: $∀$ prec 46;
 
     // The role rode the annotation onto its term.
     expect(spec.terms.get("imp")?.roles).toEqual(["conditional"]);
-    expect(spec.terms.get("_pred")?.roles).toEqual(["predicate"]);
+    expect(spec.terms.get("F")?.roles).toEqual(["predicate"]);
 
     // Alias spellings are plain repeated notations; order is declaration
     // order, so the printer's canonical pick (last) is the Unicode one.
@@ -171,10 +173,10 @@ prefix all: $∀$ prec 46;
       "→",
     ]);
 
-    // The juxtaposition rule parsed structurally.
+    // The rewrite rule parsed structurally.
     expect(spec.rewrites).toHaveLength(1);
     expect(spec.rewrites[0]?.pattern).toEqual([
-      { kind: "capture", name: "F", class: "pred", quantifier: "" },
+      { kind: "capture", name: "F", class: "wff", quantifier: "" },
       { kind: "capture", name: "ts", class: "tm", quantifier: "+" },
     ]);
     expect(spec.rewrites[0]?.template).toEqual([
@@ -258,19 +260,53 @@ describe("spec validation", () => {
     expect(ids(duplicated)).toEqual(["rewrite_duplicate_capture"]);
   });
 
-  test("family and role annotations check their attachment", () => {
-    const onAxiom = parseSpec(
-      `${WFF}--| @syntax family pred A-C\naxiom truth: $ t $;`,
-    );
-    expect(ids(onAxiom)).toEqual(["family_target"]);
+  test("juxtaposed demands a binary homogeneous term with a notation", () => {
+    const onSort = parseSpec(`--| @syntax juxtaposed\n${WFF}`);
+    expect(ids(onSort)).toEqual(["juxtaposed_target"]);
 
-    const roleOnSort = parseSpec("--| @syntax role conditional\nsort wff;");
-    expect(ids(roleOnSort)).toEqual(["role_target"]);
+    const onUnary = parseSpec(
+      `${WFF}--| @syntax juxtaposed\nterm neg (p: wff): wff;`,
+    );
+    expect(ids(onUnary)).toEqual(["juxtaposed_target"]);
+
+    const mixedSorts = parseSpec(
+      `${WFF}sort tm;\n--| @syntax juxtaposed\nterm eq (s t: tm): wff;\ninfixl eq: $=$ prec 50;`,
+    );
+    expect(ids(mixedSorts)).toEqual(["juxtaposed_target"]);
+
+    // No notation: the engine could never read what adjacency means.
+    const unnotated = parseSpec(
+      `${WFF}--| @syntax juxtaposed\nterm both (p q: wff): wff;`,
+    );
+    expect(ids(unnotated)).toEqual(["juxtaposed_needs_notation"]);
 
     const twice = parseSpec(
-      `--| @syntax family v a-c\nsort wff;\n--| @syntax family v d-f\nsort tm;`,
+      `${WFF}--| @syntax juxtaposed\nterm a (p q: wff): wff;\ninfixl a: $+$ prec 30;\n` +
+        "--| @syntax juxtaposed\nterm b (p q: wff): wff;\ninfixl b: $*$ prec 40;",
     );
-    expect(ids(twice)).toEqual(["duplicate_family_class"]);
+    expect(ids(twice)).toEqual(["juxtaposed_duplicate"]);
+  });
+
+  test("elided demands a nullary term, one per sort", () => {
+    const onUnary = parseSpec(
+      `${WFF}--| @syntax elided\nterm neg (p: wff): wff;`,
+    );
+    expect(ids(onUnary)).toEqual(["elided_target"]);
+
+    const twice = parseSpec(
+      `${WFF}--| @syntax elided\nterm t1: wff;\n--| @syntax elided\nterm t2: wff;`,
+    );
+    expect(ids(twice)).toEqual(["elided_duplicate"]);
+  });
+
+  test("role annotations check their attachment", () => {
+    const roleOnSort = parseSpec("--| @syntax role conditional\nsort wff;");
+    expect(ids(roleOnSort)).toEqual(["role_target"]);
+  });
+
+  test("a @vars token cannot also be a declared term", () => {
+    const conflict = parseSpec(`--| @vars a b\nsort wff;\nterm a: wff;`);
+    expect(ids(conflict)).toEqual(["vars_term_conflict"]);
   });
 
   test("malformed @syntax lines name their problem", () => {

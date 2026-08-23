@@ -13,9 +13,10 @@ import { parseSpec, printTerm, SurfaceLanguage } from "../src/index";
  * application can NOT be a blind token rewrite — `AxFx` would be eaten
  * (`A` captured as a predicate before anything knows it is a quantifier
  * here). Only the parser's ordered backtracking can decide, exactly as
- * Carnap's ordered alternatives do — so juxtaposition rides the letter
- * family (`@syntax family pred A-Z juxtaposed`), and the rewrite layer
- * keeps the patterns that really are local.
+ * Carnap's ordered alternatives do — so juxtaposition is a parser
+ * behavior, declared on the sequence combiner (`@syntax juxtaposed` on
+ * scomma: adjacency at seq denotes it), and the rewrite layer keeps the
+ * patterns that really are local.
  */
 
 async function loadMagnus(): Promise<SurfaceLanguage> {
@@ -70,8 +71,8 @@ describe("forallx Magnus: juxtaposed atoms", () => {
     expect(await magnus("Rabc")).toBe("(R (scomma (scomma a b) c))");
   });
 
-  test("a bare capital is a sentence letter", async () => {
-    expect(await magnus("P -> Q")).toBe("(imp P Q)");
+  test("a bare capital is a sentence letter — the elided sequence", async () => {
+    expect(await magnus("P -> Q")).toBe("(imp (P snil) (Q snil))");
   });
 
   test("AxFx is a quantifier; Axy is the predicate A", async () => {
@@ -126,8 +127,9 @@ describe("quantifier surface forms via the rewrite layer", () => {
   const BASE = `
 delimiter $ ( ) , $;
 provable sort wff;
---| @syntax family var x-z
+--| @vars x y z
 sort var;
+--| @vars a b c
 sort name;
 sort tm;
 sort seq;
@@ -137,12 +139,14 @@ term n2t (a: name): tm;
 coercion n2t: name > tm;
 term t2s (t: tm): seq;
 coercion t2s: tm > seq;
+--| @syntax elided
+term snil: seq;
+--| @syntax juxtaposed
 term scomma (s t: seq): seq;
 infixl scomma: $,$ prec 10;
---| @syntax family pred F-H juxtaposed
-term _pred (s: seq): wff;
---| @syntax family const a-c
-term _const: name;
+term F (s: seq): wff;
+term G (s: seq): wff;
+term H (s: seq): wff;
 term imp (p q: wff): wff;
 infixr imp: $->$ prec 30;
 term all {x: var} (p: wff x): wff;

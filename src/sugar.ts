@@ -17,9 +17,9 @@
  * rule is a lens: the Quine rule `( ?x:var ) => ∀ ?x` read backward *is*
  * the display convention that writes `∀x` as `(x)`.
  *
- * Captures match single letter tokens: by family class name, or by any
- * leaf family whose sort coerces into the named sort. The layer is
- * deliberately regular — nesting facts belong to the parser.
+ * Captures match single lexicon names — a `@vars` token or a nullary
+ * declared term — whose sort coerces into the capture's named sort. The
+ * layer is deliberately regular — nesting facts belong to the parser.
  */
 
 import type { SurfaceLanguage } from "./parse";
@@ -56,28 +56,28 @@ interface RuleMatch {
   readonly end: number;
 }
 
-function letterMatchesClass(
+function nameMatchesSort(
   lang: SurfaceLanguage,
-  reading: Reading & { kind: "letter" },
-  klass: string,
+  reading: Reading & { kind: "name" },
+  sort: string,
 ): boolean {
-  if (reading.family.class === klass) {
-    return true;
+  if (reading.ref.kind === "var") {
+    const from = reading.ref.sort;
+
+    return from === sort || lang.coerce(from, sort) !== null;
   }
 
-  const info = lang.familyInfo.get(reading.family.class);
+  // A *leaf* term: nullary, its sort coercing into the named one. A term
+  // that takes arguments is not a leaf.
+  const info = lang.spec.terms.get(reading.ref.term);
 
-  if (info === undefined) {
+  if (info === undefined || info.binders.some((binder) => !binder.binds)) {
     return false;
   }
 
-  // The sort reading: any *leaf* letter whose sort coerces into the named
-  // sort. An argument-taking letter is not a leaf.
-  if (!info.isVariable && info.argBinders.length > 0) {
-    return false;
-  }
-
-  return info.sort === klass || lang.coerce(info.sort, klass) !== null;
+  return (
+    info.returnSort === sort || lang.coerce(info.returnSort, sort) !== null
+  );
 }
 
 function matchCapture(
@@ -88,11 +88,11 @@ function matchCapture(
 ): { captured: Captured; end: number } | null {
   const point = lang.scanner.at(text, position);
   const reading = point.readings.find(
-    (r): r is Reading & { kind: "letter" } =>
-      r.kind === "letter" && letterMatchesClass(lang, r, klass),
+    (r): r is Reading & { kind: "name" } =>
+      r.kind === "name" && nameMatchesSort(lang, r, klass),
   );
 
-  if (reading === undefined || reading.kind !== "letter") {
+  if (reading === undefined || reading.kind !== "name") {
     return null;
   }
 

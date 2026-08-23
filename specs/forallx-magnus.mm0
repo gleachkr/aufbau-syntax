@@ -1,21 +1,24 @@
 -- forallx (original, P.D. Magnus) — the acid test of the design: a system
 -- with juxtaposed variadic atomic sentences (`Fx`, `Rxy`, `Rabc`) as pure
--- data, no code. Per Carnap's `magnusFOLParserOptions`: predicates A–Z with
--- arguments glued straight on, sentence letters A–Z, constants a–w,
--- variables x–z, identity, no function symbols; open formulas are allowed
--- (no closed-sentences lint), and parentheses may group anything.
+-- data, no code. Per Carnap's `magnusFOLParserOptions`: predicates A–Z
+-- with arguments glued straight on, sentence letters A–Z (the same
+-- declarations, elided), constants a–w, variables x–z, identity, no
+-- function symbols; open formulas are allowed (no closed-sentences lint),
+-- and parentheses may group anything.
 --
--- The `juxtaposed` flag on the predicate family is what changes against
--- Calgary; the `A`-as-∀ ambiguity resolves exactly as in Carnap, because
--- the quantifier reading is tried before the letter reading: `AxFx` is a
+-- `@syntax juxtaposed` on the sequence combiner is what changes against
+-- Calgary: adjacency at seq denotes scomma, so a predicate's arguments
+-- glue. The `A`-as-∀ ambiguity resolves exactly as in Carnap, because the
+-- quantifier reading is tried before the name reading: `AxFx` is a
 -- quantified formula, `Axy` is the predicate A of x and y.
 
 delimiter $ ( ) , $;
 
 provable sort wff;
 
---| @syntax family var x-z
+--| @vars x y z
 sort var;
+--| @vars a b c d e f g h i j k l m n o p q r s t u v w
 sort name;
 sort tm;
 sort seq;
@@ -27,18 +30,38 @@ coercion n2t: name > tm;
 term t2s (t: tm): seq;
 coercion t2s: tm > seq;
 
+--| @syntax elided
+term snil: seq;
+--| @syntax juxtaposed
 term scomma (s t: seq): seq;
 infixl scomma: $,$ prec 10;
 
---| @syntax family pred A-Z juxtaposed
---| @syntax role predicate
-term _pred (s: seq): wff;
---| @syntax family atom A-Z
---| @syntax role sentence-letter
-term _atom: wff;
---| @syntax family const a-w
---| @syntax role constant
-term _const: name;
+term A (s: seq): wff;
+term B (s: seq): wff;
+term C (s: seq): wff;
+term D (s: seq): wff;
+term E (s: seq): wff;
+term F (s: seq): wff;
+term G (s: seq): wff;
+term H (s: seq): wff;
+term I (s: seq): wff;
+term J (s: seq): wff;
+term K (s: seq): wff;
+term L (s: seq): wff;
+term M (s: seq): wff;
+term N (s: seq): wff;
+term O (s: seq): wff;
+term P (s: seq): wff;
+term Q (s: seq): wff;
+term R (s: seq): wff;
+term S (s: seq): wff;
+term T (s: seq): wff;
+term U (s: seq): wff;
+term V (s: seq): wff;
+term W (s: seq): wff;
+term X (s: seq): wff;
+term Y (s: seq): wff;
+term Z (s: seq): wff;
 
 --| @syntax role negation
 term not (p: wff): wff;

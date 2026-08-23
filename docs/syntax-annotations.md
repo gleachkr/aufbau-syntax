@@ -1,73 +1,104 @@
 # The `@syntax` annotation reference
 
 `@syntax` annotations ride MM0's `--|` doc-comment channel — the same one
-Aufbau uses for `@acui`, `@congr`, `@view` and the rest. One annotation per
+Aufbau uses for `@acui`, `@congr`, `@vars` and the rest. One annotation per
 line, attached to the statement that follows it. Anything that is not
-`@syntax` is *foreign*: preserved as data, never interpreted here. Before a
-spec is handed to the Aufbau engine (which rejects annotations it does not
-know), strip the `@syntax` lines with `stripSyntaxAnnotations`.
+`@syntax` is *foreign*: preserved as data, never interpreted here — with
+one deliberate exception, `@vars`, which is read *and* preserved (see
+below). Before a spec is handed to the Aufbau engine (which rejects
+annotations it does not know), strip the `@syntax` lines with
+`stripSyntaxAnnotations`; everything else in the file is already the
+engine's language.
 
 Attachment rules:
 
 | Annotation | Attaches to |
 |---|---|
-| `family` | a `sort`, or a placeholder `term` |
+| `juxtaposed` | a binary term whose arguments and result share one sort |
+| `elided` | a nullary term |
 | `role` | a `term` or `def` |
 | everything else | any statement — the effect is spec-wide |
 
-## What needs no annotation at all
+## The lexicon needs no `@syntax` at all
 
-Three surface conventions fall out of ordinary MM0 declarations:
-
-- **Alias spellings.** Declare several notations for one constructor; all
-  parse, and the **last declared is canonical** — it is what the printer
-  writes. Put the ASCII forms first and the display glyph last.
-- **Spacing.** The display printer spaces *sentential connectives* (infix
-  over the provable sort: `P ∧ Q`) and sets everything else tight (`¬P`,
-  `∀x`, `a=b`, `R(a,b)`). This is derived from the declarations, not
-  configured.
-- **Display parenthesization.** Connective compounds are always
-  parenthesized (the textbook full-paren convention), everything else is
-  bare; see `display drop-outer-parens` below for the outermost pair.
-
-## `family <class> <letters…> [flags]`
+The letters of a textbook language are ordinary MM0 declarations, and the
+variables are the engine's own `@vars` pools:
 
 ```text
---| @syntax family var s-z subscripts
+--| @vars s t u v w x y z
 sort var;
 
---| @syntax family pred A-Z subscripts
-term _pred (s: seq): wff;
+term F (s: seq): wff;
+term f (s: seq): tm;
 ```
 
-Declares a letter family: the schema behind textbook lexicons, where any
-of `A`–`Z` is a predicate letter. `<letters…>` is one or more words, each a
-code-point range (`a-r`) or a literal run (`stuvwxyz`).
+- **Variables and constants** are `@vars` tokens: a token in a sort's pool
+  is a leaf identifier of that sort. Whether a quantifier can bind it
+  falls out of the quantifiers' binder sorts (`all {x: var}` binds `var`,
+  not `name`), so Calgary-style names are just `@vars` on `name` — the
+  same treatment the proof theories already give them. `@vars` is an
+  engine annotation; it is never stripped, and a token in a pool may not
+  also be a declared term (validated).
+- **Predicates, function symbols, and sentence letters** are declared
+  terms. A term *with* a notation is spelled by its notation; a term
+  without one is spelled by its name — MM0's own application rule, read
+  character-level, so `F(a,b)` is application syntax with no machinery
+  behind it. The argument-sequence trick (one `seq` argument, built by an
+  infix comma) makes one letter variadic; `elided` (below) makes its
+  nullary use — the sentence letter, the constant — the same declaration.
+- **Alias spellings** are extra notations on one constructor; all parse,
+  and the **last declared is canonical** — it is what the printer writes.
+  Put the ASCII forms first and the display glyph last.
+- **Spacing** is derived: the display printer spaces sentential
+  connectives (infix over the provable sort: `P ∧ Q`) and sets everything
+  else tight (`¬P`, `∀x`, `a=b`, `R(a,b)`).
+- **Display parenthesization** is derived: connective compounds are always
+  parenthesized (the textbook full-paren convention), everything else
+  bare; see `display drop-outer-parens` for the outermost pair.
 
-- On a **sort**: the letters are variables of that sort — bindable by
-  quantifier notations, leaves in terms.
-- On a **term** (the *template*, conventionally named `_class`): each
-  letter elaborates to a copy of the template. A nullary template gives
-  constants or sentence letters; a template over an argument sort gives
-  predicates or function symbols. `elaboratedDeclarations` writes the
-  `term` statements the engine needs for whatever letters a formula used.
+The vocabulary is finite — MM0's nature. There is no subscript scheme; a
+book that leans on `x_1` can declare a few such names explicitly (they
+are valid MM0 identifiers).
 
-Flags, in any order at the end:
+## `elided`
 
-- `subscripts` — underscore subscripts (`x_1`, `F_12`); the underscore
-  joins only when digits follow.
-- `bare-subscripts` — bare digits (`P0`, `R12`).
-- `juxtaposed` — arguments glue straight on (`Fxy`), the pre-2019 forallx
-  shape. The parser consumes leaf letters greedily while they coerce into
-  the template's argument sort, folding several through the binary
-  combiner it finds by shape in the spec (Calgary's `scomma`). This is a
-  *parser* behavior, deliberately not a rewrite rule: `AxFx` versus `Axy`
-  can only be settled by trying the quantifier reading first and falling
-  back — Carnap's ordered alternatives, reproduced.
+```text
+--| @syntax elided
+term snil: seq;
+```
 
-Families are tried in declaration order; declare argument-taking families
-before nullary ones sharing letters, so `f(a)` is a function application
-and bare `f` falls through to the constant.
+This term may go unwritten. Parsing, a declared name expecting an
+argument of `snil`'s sort that finds none gets `snil` supplied — bare `P`
+parses as `P(snil)`, the 0-ary use of the predicate letter. Printing,
+display drops it again (bare `P`), and engine mode writes it out in full
+(`P (snil)`). One nullary term per sort (validated).
+
+## `juxtaposed`
+
+```text
+--| @syntax juxtaposed
+term scomma (s t: seq): seq;
+```
+
+Adjacency of this combiner's sort denotes it. Declared on the sequence
+combiner, it makes a predicate's arguments glue — `Rxy` is `R` applied to
+the sequence `x·y` — the pre-2019 forallx shape. The annotated term must
+be binary and homogeneous (`S × S → S`), must also carry a notation (the
+engine cannot read invisibility — engine mode prints `x , y`), and is
+unique per sort (all validated).
+
+What glues: self-delimiting single-token operands — `@vars` tokens,
+nullary declared names, and nullary notations (an `∅`-style constant) —
+whose sort coerces into the combiner's, consumed greedily. Nested
+juxtaposed applications (`Ffxy`) are deliberately not operands yet:
+under variadic sequences they are ambiguous, and that extension is
+deferred. So is free-standing adjacency (`ab` for `a*b` in a group-theory
+spec) — the annotation's meaning is written to cover it, the parser does
+not implement it yet.
+
+This is a *parser* behavior, deliberately not a rewrite rule: `AxFx`
+versus `Axy` can only be settled by trying the quantifier reading first
+and falling back — Carnap's ordered alternatives, reproduced.
 
 ## `brackets <open> <close> [<open> <close>…]`
 
@@ -98,7 +129,8 @@ The closed set of refusal conventions:
   mistakes, not noise (forallx). Argument parentheses — `R(a,b)` — are
   application syntax and exempt.
 - `closed-sentences` — a free variable is an error, reported at its own
-  position.
+  position. Only variables of sorts some quantifier binds count; a
+  `@vars` constant (Calgary's names) cannot be "free".
 
 `parse(text, { lints: false })` reads text without them.
 
@@ -116,15 +148,15 @@ The closed set of refusal conventions:
 ```
 
 A bidirectional token-rewrite rule. The pattern is a sequence of literal
-tokens and captures `?name:class` (optionally `+` one-or-more or `?`
+tokens and captures `?name:sort` (optionally `+` one-or-more or `?`
 optional); the template is literal tokens and references `?name`, where
 `?name<sep>*` joins a `+` capture's repeats with a separator token.
 
-A capture's class is a **family class name**, or a **sort** — matching any
-leaf letter whose sort coerces into it (`?t:tm` takes constants and
-variables alike). Captures match single letter tokens; the layer is
-deliberately regular, and nesting facts (bracket matching, precedence)
-belong to the parser.
+A capture's class is a **sort**: it matches any single lexicon name — a
+`@vars` token or a nullary declared term — whose sort coerces into it
+(`?t:tm` takes constants and variables alike). The layer is deliberately
+regular, and nesting facts (bracket matching, precedence) belong to the
+parser.
 
 Forward, each rule makes **one left-to-right pass** in declaration order,
 resuming after each replacement — no fixpoints, termination by
@@ -147,4 +179,6 @@ term imp (p q: wff): wff;
 Passthrough metadata naming what a constructor *means* to a consumer — a
 truth-table evaluator looks for `conjunction`, a model checker for
 `forall`. The library records roles on `TermInfo` and interprets none of
-them.
+them. Lexicon letters need no roles: a predicate *is* a term returning
+the provable sort, a function one returning a term sort — derivable from
+shape.

@@ -4,7 +4,6 @@ import { loadCompiler } from "@aufbau/compiler";
 import type { Term } from "../src/index";
 import {
   boundVariableBinders,
-  elaboratedDeclarations,
   parseSpec,
   printTerm,
   SurfaceLanguage,
@@ -21,11 +20,13 @@ import {
  * expression. X is this library's engine-mode emission of a student
  * formula; Y is a hand-written engine spelling of the intended reading.
  * The theory is the Calgary spec file with `@syntax` lines stripped —
- * the exact artifact a server would hand the engine — plus the
- * elaborated declarations for the letters the cases use.
+ * the exact artifact a server would hand the engine, lexicon included:
+ * the letters are ordinary declarations now, so nothing needs elaborating.
  *
- * Letters keep one arity across all cases (R stays binary, S stays a
- * sentence letter): elaboration declares each name once.
+ * The cases avoid `A` and `E` as sentence letters: those tokens are also
+ * quantifier spellings, which own them inside the engine's math strings —
+ * a pre-existing limit of keeping the ASCII quantifier aliases in the
+ * engine-facing theory.
  */
 
 interface Case {
@@ -43,7 +44,7 @@ const CASES: readonly Case[] = [
   {
     name: "connective_precedence",
     source: "P /\\ Q -> S",
-    engineSpelling: "(P ∧ Q) → S",
+    engineSpelling: "((P snil) ∧ (Q snil)) → (S snil)",
   },
   {
     name: "functions_identity",
@@ -53,12 +54,13 @@ const CASES: readonly Case[] = [
   {
     name: "de_morgan_shape",
     source: "~(P \\/ Q) <-> (~P /\\ ~Q)",
-    engineSpelling: "(¬ (P ∨ Q)) ↔ ((¬ P) ∧ (¬ Q))",
+    engineSpelling:
+      "(¬ ((P snil) ∨ (Q snil))) ↔ ((¬ (P snil)) ∧ (¬ (Q snil)))",
   },
   {
     name: "inequality_def",
     source: "a != b",
-    engineSpelling: "a ≠ b",
+    engineSpelling: "(a snil) ≠ (b snil)",
   },
 ];
 
@@ -121,7 +123,6 @@ describe("the Aufbau compiler accepts engine-mode output", () => {
 
     const mm0 = [
       stripSyntaxAnnotations(specSource),
-      elaboratedDeclarations(language, parsedTerms),
       "axiom iff_refl (p: wff): $ p ↔ p $;",
       ...theorems.map((theorem) => theorem.statement),
     ].join("\n");

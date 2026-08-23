@@ -3,8 +3,10 @@
 Surface syntax over MM0, for teaching logic.
 
 An [MM0](https://github.com/digama0/mm0) theory file already fixes a
-language's signature, binding structure, precedences, and canonical
-notation. This library reads such a file — plus `@syntax` annotations in
+language's signature, lexicon, binding structure, precedences, and
+canonical notation — the letters are ordinary term declarations, the
+variables the engine's own `@vars` pools. This library reads such a file —
+plus a small set of `@syntax` annotations in
 [Aufbau](https://github.com/gleachkr/Aufbau)'s `--|` comment channel — and
 derives from it the two things MM0's own math parser cannot give a logic
 classroom:
@@ -26,15 +28,21 @@ One spec file per textbook system; no code per system.
 1. **Statement reader** — parses the MM0 statement grammar (sorts, terms,
    notations, coercions, delimiters) and `--|` annotations into a `Spec`.
    `@syntax` annotations are understood structurally; all others (`@acui`,
-   `@congr`, …) pass through as data.
+   `@congr`, …) pass through as data — except `@vars`, which is read *and*
+   passed through: the engine's variable pools are the surface lexicon's
+   variables.
 2. **Scanner** — character-level maximal munch over the declared tokens and
-   letter families. No whitespace requirement; glue dissolves here.
+   lexicon names. No whitespace requirement; glue dissolves here.
 3. **Rewrite layer** — bidirectional token-pattern rules for textbook sugar
-   (`Fxy` ⇄ `F(x,y)`, `(x)Fx` ⇄ `∀xF(x)`). Regular by design: one pass per
-   rule, spans threaded through, linear rules invert for printing.
+   that really is local (`(x)Fx` ⇄ `∀xF(x)`, `(∀x)` ⇄ `∀x`). Regular by
+   design: one pass per rule, spans threaded through, linear rules invert
+   for printing. Juxtaposition is deliberately *not* here — it needs the
+   parser's backtracking — hence the `juxtaposed` flag below.
 4. **Math parser** — a faithful port of MM0's dynamic precedence parser,
-   extended by exactly three declared conventions: variant grouping pairs,
-   `assoc-none` precedence levels, and a closed set of lints.
+   extended by declared conventions only: variant grouping pairs,
+   `assoc-none` precedence levels, a closed set of lints, and per-term
+   `elided` (bare `P` is `P(snil)`) and `juxtaposed` (adjacency at a sort
+   denotes its combiner — `Rxy`) flags.
 5. **Printer** — last-declared notation is canonical; minimal parentheses
    by precedence; display options; invertible rewrites run in reverse.
 

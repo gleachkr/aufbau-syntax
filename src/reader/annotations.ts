@@ -10,10 +10,15 @@
  * know.
  *
  * Attachment rules (checked by the spec builder, not here):
- *   - `family` attaches to a `sort` (binding variables of that sort) or to
- *     a placeholder `term` (each letter elaborates to a copy of it);
- *   - `role` attaches to a `term`;
+ *   - `juxtaposed` attaches to a binary term whose arguments and result
+ *     share one sort (adjacency of that sort's expressions denotes it);
+ *   - `elided` attaches to a nullary term (supplied when an argument of
+ *     its sort is missing, dropped again when printing);
+ *   - `role` attaches to a `term` or `def`;
  *   - everything else is spec-wide and may sit on any statement.
+ *
+ * The lexicon itself needs no `@syntax` at all: letters are ordinary term
+ * declarations, and variables ride the engine's own `@vars` annotation.
  */
 
 import { type Diagnostic, diagnostic, type Span } from "../diagnostics";
@@ -25,17 +30,11 @@ export const LINT_NAMES = [
 
 export type LintName = (typeof LINT_NAMES)[number];
 
-/**
- * How a letter family writes subscripts: `x_1` (Carnap's first-order
- * convention), `P1` (its propositional one), or not at all.
- */
-export type SubscriptForm = "bare" | "none" | "underscore";
-
 /** A capture in a rewrite pattern: `?ts:tm+` — name, class, quantifier. */
 export interface RuleCapture {
   readonly kind: "capture";
   readonly name: string;
-  /** A letter-family class or a sort name; resolved by the sugar layer. */
+  /** A sort name; a leaf whose sort coerces into it matches. */
   readonly class: string;
   readonly quantifier: "" | "+" | "?";
 }
@@ -81,12 +80,12 @@ export type SyntaxAnnotation =
       readonly pairs: readonly (readonly [string, string])[];
     }
   | {
-      readonly kind: "family";
-      readonly class: string;
-      /** Arguments are glued straight on (`Fxy`), Carnap's no-paren style. */
-      readonly juxtaposed: boolean;
-      readonly letters: ReadonlySet<string>;
-      readonly subscripts: SubscriptForm;
+      /** Supplied when an argument of its sort is missing; drops on print. */
+      readonly kind: "elided";
+    }
+  | {
+      /** Adjacency of this combiner's sort denotes it — `Fxy`, `ab`. */
+      readonly kind: "juxtaposed";
     }
   | {
       readonly kind: "lint";
@@ -103,9 +102,7 @@ export type SyntaxAnnotation =
 
 const TEMPLATES: Record<string, string> = {
   syntax_unknown_subcommand: "unknown @syntax subcommand {subcommand}",
-  syntax_bad_family:
-    "@syntax family wants: family <class> <letters…> [subscripts]",
-  syntax_bad_letters: "cannot read letter specification {letters}",
+  syntax_bad_flag: "@syntax {flag} takes no arguments",
   syntax_bad_brackets:
     "bracket pairs come as: <open> <close> [<open> <close>…]",
   syntax_bad_assoc_none: "@syntax assoc-none wants one precedence number",
@@ -141,41 +138,6 @@ function ok(annotation: SyntaxAnnotation): {
 export type SyntaxAnnotationResult =
   | { readonly annotation: SyntaxAnnotation; readonly diagnostic: null }
   | { readonly annotation: null; readonly diagnostic: Diagnostic };
-
-/**
- * Read a letter specification: each word is either a range `a-z` (by code
- * point) or a literal run of letters (`stuvwxyz`).
- */
-function parseLetters(words: readonly string[]): Set<string> | null {
-  const letters = new Set<string>();
-
-  for (const word of words) {
-    const points = [...word];
-
-    if (points.length === 3 && points[1] === "-") {
-      const from = points[0]?.codePointAt(0);
-      const to = points[2]?.codePointAt(0);
-
-      if (from === undefined || to === undefined || from > to) {
-        return null;
-      }
-
-      for (let cp = from; cp <= to; cp += 1) {
-        letters.add(String.fromCodePoint(cp));
-      }
-      continue;
-    }
-
-    for (const point of points) {
-      if (point === "-") {
-        return null;
-      }
-      letters.add(point);
-    }
-  }
-
-  return letters.size > 0 ? letters : null;
-}
 
 function parsePairs(
   words: readonly string[],
@@ -278,53 +240,13 @@ export function parseSyntaxAnnotation(
   const subcommand = words[0];
 
   switch (subcommand) {
-    case "family": {
-      const klass = words[1];
-      let subscripts: SubscriptForm = "none";
-      let juxtaposed = false;
-      let end = words.length;
-
-      // Trailing flags, in any order: `subscripts`, `bare-subscripts`,
-      // `juxtaposed`.
-      for (;;) {
-        const last = words[end - 1];
-
-        if (last === "subscripts") {
-          subscripts = "underscore";
-        } else if (last === "bare-subscripts") {
-          subscripts = "bare";
-        } else if (last === "juxtaposed") {
-          juxtaposed = true;
-        } else {
-          break;
-        }
-
-        end -= 1;
+    case "juxtaposed":
+    case "elided": {
+      if (words.length !== 1) {
+        return fail("syntax_bad_flag", { flag: subcommand }, span);
       }
 
-      const letterWords = words.slice(2, end);
-
-      if (klass === undefined || letterWords.length === 0) {
-        return fail("syntax_bad_family", {}, span);
-      }
-
-      const letters = parseLetters(letterWords);
-
-      if (letters === null) {
-        return fail(
-          "syntax_bad_letters",
-          { letters: letterWords.join(" ") },
-          span,
-        );
-      }
-
-      return ok({
-        kind: "family",
-        class: klass,
-        juxtaposed,
-        letters,
-        subscripts,
-      });
+      return ok({ kind: subcommand });
     }
 
     case "brackets": {
