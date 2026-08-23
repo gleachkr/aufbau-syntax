@@ -4,4 +4,43 @@
  * The public API grows stage by stage; see the README for the layer stack.
  */
 
-export {};
+export type { Diagnostic, Span } from "./diagnostics";
+export type {
+  LintName,
+  RewriteRule,
+  RuleCapture,
+  RuleLiteral,
+  RulePatternElement,
+  RuleReference,
+  RuleTemplateElement,
+  SyntaxAnnotation,
+} from "./reader/annotations";
+export type {
+  CoercionInfo,
+  LetterFamily,
+  NotationInfo,
+  SortInfo,
+  Spec,
+  SpecParse,
+  TermInfo,
+} from "./reader/spec";
+export { parseSpec } from "./reader/spec";
+export type {
+  Annotation,
+  AssertStatement,
+  Binder,
+  CoercionStatement,
+  DefStatement,
+  DelimiterStatement,
+  GenNotationStatement,
+  MathString,
+  NotationLiteral,
+  Precedence,
+  SimpleNotationStatement,
+  SortStatement,
+  Statement,
+  StatementParse,
+  TermStatement,
+  TypeRef,
+} from "./reader/statements";
+export { parseStatements } from "./reader/statements";
