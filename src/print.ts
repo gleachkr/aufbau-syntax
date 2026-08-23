@@ -23,6 +23,7 @@
  */
 
 import type { SurfaceLanguage } from "./parse";
+import { resugar } from "./sugar";
 import type { Term } from "./term";
 
 export type PrintMode = "display" | "engine";
@@ -32,7 +33,7 @@ export function printTerm(
   term: Term,
   mode: PrintMode = "display",
 ): string {
-  const printed = render(lang, term, mode);
+  let printed = render(lang, term, mode);
 
   if (
     mode === "display" &&
@@ -40,7 +41,11 @@ export function printTerm(
     printed.startsWith("(") &&
     printed.endsWith(")")
   ) {
-    return printed.slice(1, -1);
+    printed = printed.slice(1, -1);
+  }
+
+  if (mode === "display" && lang.spec.rewrites.length > 0) {
+    printed = resugar(lang, printed);
   }
 
   return printed;
@@ -64,6 +69,43 @@ function render(lang: SurfaceLanguage, term: Term, mode: PrintMode): string {
   // In engine mode this is constructor application, whose arguments must
   // be expression(max) — parenthesized unless they already are.
   if (term.family !== null) {
+    const familyInfo = lang.familyInfo.get(term.family);
+
+    // A juxtaposed family writes its leaves straight on — `Rxy` — so the
+    // combiner tree flattens and the parentheses disappear.
+    if (
+      mode === "display" &&
+      familyInfo?.family.juxtaposed === true &&
+      term.args.length === 1
+    ) {
+      const leaves: string[] = [];
+      const flatten = (node: Term): void => {
+        const bare = uncoerced(lang, node);
+
+        if (
+          bare.kind === "app" &&
+          familyInfo.combiner !== null &&
+          bare.term === familyInfo.combiner.name
+        ) {
+          for (const inner of bare.args) {
+            flatten(inner);
+          }
+
+          return;
+        }
+
+        leaves.push(render(lang, bare, mode));
+      };
+
+      const seed = term.args[0];
+
+      if (seed !== undefined) {
+        flatten(seed);
+      }
+
+      return `${term.term}${leaves.join("")}`;
+    }
+
     if (mode === "engine") {
       const args = term.args.map((arg) => {
         const rendered = render(lang, arg, mode);

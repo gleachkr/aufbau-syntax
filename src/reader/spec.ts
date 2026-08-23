@@ -70,6 +70,8 @@ export type NotationInfo =
 
 export interface LetterFamily {
   readonly class: string;
+  /** Arguments are glued straight on (`Fxy`) instead of parenthesized. */
+  readonly juxtaposed: boolean;
   readonly letters: ReadonlySet<string>;
   readonly subscripts: SubscriptForm;
   readonly target:
@@ -367,6 +369,7 @@ export function parseSpec(source: string): SpecParse {
         if (statement.kind === "sort") {
           families.push({
             class: annotation.class,
+            juxtaposed: annotation.juxtaposed,
             letters: annotation.letters,
             subscripts: annotation.subscripts,
             target: { kind: "sort", sort: statement.name },
@@ -374,6 +377,7 @@ export function parseSpec(source: string): SpecParse {
         } else if (statement.kind === "term") {
           families.push({
             class: annotation.class,
+            juxtaposed: annotation.juxtaposed,
             letters: annotation.letters,
             subscripts: annotation.subscripts,
             target: { kind: "template", term: statement.name },

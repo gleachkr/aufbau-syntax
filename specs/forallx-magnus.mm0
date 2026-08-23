@@ -1,0 +1,82 @@
+-- forallx (original, P.D. Magnus) — the acid test of the design: a system
+-- with juxtaposed variadic atomic sentences (`Fx`, `Rxy`, `Rabc`) as pure
+-- data, no code. Per Carnap's `magnusFOLParserOptions`: predicates A–Z with
+-- arguments glued straight on, sentence letters A–Z, constants a–w,
+-- variables x–z, identity, no function symbols; open formulas are allowed
+-- (no closed-sentences lint), and parentheses may group anything.
+--
+-- The `juxtaposed` flag on the predicate family is what changes against
+-- Calgary; the `A`-as-∀ ambiguity resolves exactly as in Carnap, because
+-- the quantifier reading is tried before the letter reading: `AxFx` is a
+-- quantified formula, `Axy` is the predicate A of x and y.
+
+delimiter $ ( ) , $;
+
+provable sort wff;
+
+--| @syntax family var x-z
+sort var;
+sort name;
+sort tm;
+sort seq;
+
+term v2t (x: var): tm;
+coercion v2t: var > tm;
+term n2t (a: name): tm;
+coercion n2t: name > tm;
+term t2s (t: tm): seq;
+coercion t2s: tm > seq;
+
+term scomma (s t: seq): seq;
+infixl scomma: $,$ prec 10;
+
+--| @syntax family pred A-Z juxtaposed
+--| @syntax role predicate
+term _pred (s: seq): wff;
+--| @syntax family atom A-Z
+--| @syntax role sentence-letter
+term _atom: wff;
+--| @syntax family const a-w
+--| @syntax role constant
+term _const: name;
+
+--| @syntax role negation
+term not (p: wff): wff;
+prefix not: $-$ prec 50;
+prefix not: $~$ prec 50;
+prefix not: $¬$ prec 50;
+
+--| @syntax role conjunction
+term and (p q: wff): wff;
+infixl and: $/\$ prec 40;
+infixl and: $&$ prec 40;
+infixl and: $∧$ prec 40;
+
+--| @syntax role disjunction
+term or (p q: wff): wff;
+infixl or: $\/$ prec 35;
+infixl or: $∨$ prec 35;
+
+--| @syntax role conditional
+term imp (p q: wff): wff;
+infixr imp: $->$ prec 30;
+infixr imp: $→$ prec 30;
+
+--| @syntax role biconditional
+term iff (p q: wff): wff;
+infixl iff: $<->$ prec 25;
+infixl iff: $↔$ prec 25;
+
+--| @syntax role forall
+term all {x: var} (p: wff x): wff;
+prefix all: $A$ prec 50;
+prefix all: $∀$ prec 50;
+
+--| @syntax role exists
+term ex {x: var} (p: wff x): wff;
+prefix ex: $E$ prec 50;
+prefix ex: $∃$ prec 50;
+
+--| @syntax role identity
+term ideq (s t: tm): wff;
+infixl ideq: $=$ prec 60;

@@ -35,6 +35,7 @@ import type {
 } from "./reader/spec";
 import type { Binder, TypeRef } from "./reader/statements";
 import { type Reading, Scanner } from "./scan";
+import { desugar, remapSpan } from "./sugar";
 import type { AppTerm, Term, VariableTerm } from "./term";
 import { walkTerm } from "./term";
 
@@ -100,6 +101,12 @@ interface FamilyInfo {
   readonly argBinders: readonly Binder[];
   readonly sort: string;
   readonly isVariable: boolean;
+  /**
+   * For a juxtaposed family whose template takes one argument: the binary
+   * constructor that folds several juxtaposed leaves into that argument
+   * (Calgary's `scomma`), found by shape in the spec.
+   */
+  readonly combiner: TermInfo | null;
 }
 
 export interface ParseSuccess {
@@ -232,6 +239,7 @@ export class SurfaceLanguage {
           argBinders: [],
           sort: family.target.sort,
           isVariable: true,
+          combiner: null,
         });
         continue;
       }
@@ -242,11 +250,27 @@ export class SurfaceLanguage {
         continue;
       }
 
+      const argBinders = template.binders.filter((binder) => !binder.binds);
+      const argSort =
+        argBinders.length === 1 ? binderSort(argBinders[0]) : "";
+      const combiner =
+        [...spec.terms.values()].find((candidate) => {
+          const regular = candidate.binders.filter((b) => !b.binds);
+
+          return (
+            candidate.binders.length === 2 &&
+            regular.length === 2 &&
+            candidate.returnSort === argSort &&
+            regular.every((b) => binderSort(b) === argSort)
+          );
+        }) ?? null;
+
       this.familyInfo.set(family.class, {
         family,
-        argBinders: template.binders.filter((binder) => !binder.binds),
+        argBinders,
         sort: template.returnSort,
         isVariable: false,
+        combiner,
       });
     }
 
@@ -355,7 +379,35 @@ export class SurfaceLanguage {
     text: string,
     options: { readonly lints?: boolean } = {},
   ): ParseResult {
-    return new Parse(this, text, options.lints ?? true).run();
+    const lints = options.lints ?? true;
+
+    if (this.spec.rewrites.length === 0) {
+      return new Parse(this, text, lints).run();
+    }
+
+    // Desugar first, then map every span in the outcome back through the
+    // origin map, so nothing downstream ever sees rewritten offsets.
+    const rewritten = desugar(this, text);
+    const result = new Parse(this, rewritten.text, lints).run();
+    const diagnostics = result.diagnostics.map((diag) => ({
+      ...diag,
+      span: remapSpan(rewritten.origin, diag.span),
+    }));
+
+    if (!result.ok) {
+      return { ok: false, diagnostics };
+    }
+
+    const remapTerm = (term: Term): Term =>
+      term.kind === "variable"
+        ? { ...term, span: remapSpan(rewritten.origin, term.span) }
+        : {
+            ...term,
+            span: remapSpan(rewritten.origin, term.span),
+            args: term.args.map(remapTerm),
+          };
+
+    return { ok: true, term: remapTerm(result.term), diagnostics };
   }
 }
 
@@ -977,6 +1029,135 @@ class Parse {
         span: { start, end: this.position },
         grouped: false,
         binder: false,
+      };
+    }
+
+    // A juxtaposed family glues its arguments straight on — `Fxy`, the
+    // pre-2019 forallx shape. Leaves (variables and nullary letters) are
+    // consumed greedily while they coerce into the argument sort; several
+    // fold through the discovered combiner. Context settles the `A`-as-∀
+    // ambiguity exactly as in Carnap: the quantifier reading was tried
+    // first, and fell through to here only if it failed.
+    if (
+      info.family.juxtaposed &&
+      info.argBinders.length === 1 &&
+      !info.isVariable
+    ) {
+      const target = binderSort(info.argBinders[0]);
+      const leaves: Term[] = [];
+
+      for (;;) {
+        const point = this.lang.scanner.at(this.text, this.position);
+        const leafReading = point.readings.find(
+          (r): r is Reading & { kind: "letter" } => {
+            if (r.kind !== "letter") {
+              return false;
+            }
+
+            const leafInfo = this.lang.familyInfo.get(r.family.class);
+
+            if (
+              leafInfo === undefined ||
+              (!leafInfo.isVariable && leafInfo.argBinders.length > 0)
+            ) {
+              return false;
+            }
+
+            return this.lang.coerce(leafInfo.sort, target) !== null;
+          },
+        );
+
+        if (leafReading === undefined || leafReading.kind !== "letter") {
+          break;
+        }
+
+        const leafInfo = this.lang.familyInfo.get(leafReading.family.class);
+
+        if (leafInfo === undefined) {
+          break;
+        }
+
+        this.position = point.start + leafReading.length;
+
+        const span = { start: point.start, end: this.position };
+        const leaf: Term = leafInfo.isVariable
+          ? {
+              kind: "variable",
+              name: leafReading.name,
+              sort: leafInfo.sort,
+              span,
+              grouped: false,
+              binder: false,
+            }
+          : {
+              kind: "app",
+              term: leafReading.name,
+              family: leafReading.family.class,
+              args: [],
+              sort: leafInfo.sort,
+              span,
+              grouped: false,
+              fixity: null,
+              prec: null,
+              token: null,
+            };
+        const coerced = this.coerceOrReport(leaf, target);
+
+        if (coerced === null) {
+          return null;
+        }
+
+        leaves.push(coerced);
+      }
+
+      const first = leaves[0];
+
+      if (first === undefined) {
+        return this.report(
+          "expected_formula_found",
+          { token: reading.name },
+          { start, end: start + reading.length },
+        );
+      }
+
+      let folded = first;
+
+      for (const leaf of leaves.slice(1)) {
+        const combiner = info.combiner;
+
+        if (combiner === null) {
+          return this.report(
+            "spec_notation_incomplete",
+            { term: reading.name },
+            { start, end: this.position },
+          );
+        }
+
+        folded = {
+          kind: "app",
+          term: combiner.name,
+          family: null,
+          args: [folded, leaf],
+          sort: combiner.returnSort,
+          span: { start: folded.span.start, end: leaf.span.end },
+          grouped: false,
+          fixity: null,
+          prec: null,
+          token: null,
+        };
+      }
+
+      return {
+        kind: "app",
+        term: reading.name,
+        family: reading.family.class,
+        args: [folded],
+        sort: info.sort,
+        span: { start, end: this.position },
+        grouped: false,
+        fixity: null,
+        prec: null,
+        token: null,
       };
     }
 

@@ -83,6 +83,8 @@ export type SyntaxAnnotation =
   | {
       readonly kind: "family";
       readonly class: string;
+      /** Arguments are glued straight on (`Fxy`), Carnap's no-paren style. */
+      readonly juxtaposed: boolean;
       readonly letters: ReadonlySet<string>;
       readonly subscripts: SubscriptForm;
     }
@@ -278,17 +280,29 @@ export function parseSyntaxAnnotation(
   switch (subcommand) {
     case "family": {
       const klass = words[1];
-      const last = words[words.length - 1];
-      const subscripts: SubscriptForm =
-        last === "subscripts"
-          ? "underscore"
-          : last === "bare-subscripts"
-            ? "bare"
-            : "none";
-      const letterWords = words.slice(
-        2,
-        subscripts === "none" ? undefined : -1,
-      );
+      let subscripts: SubscriptForm = "none";
+      let juxtaposed = false;
+      let end = words.length;
+
+      // Trailing flags, in any order: `subscripts`, `bare-subscripts`,
+      // `juxtaposed`.
+      for (;;) {
+        const last = words[end - 1];
+
+        if (last === "subscripts") {
+          subscripts = "underscore";
+        } else if (last === "bare-subscripts") {
+          subscripts = "bare";
+        } else if (last === "juxtaposed") {
+          juxtaposed = true;
+        } else {
+          break;
+        }
+
+        end -= 1;
+      }
+
+      const letterWords = words.slice(2, end);
 
       if (klass === undefined || letterWords.length === 0) {
         return fail("syntax_bad_family", {}, span);
@@ -304,7 +318,13 @@ export function parseSyntaxAnnotation(
         );
       }
 
-      return ok({ kind: "family", class: klass, letters, subscripts });
+      return ok({
+        kind: "family",
+        class: klass,
+        juxtaposed,
+        letters,
+        subscripts,
+      });
     }
 
     case "brackets": {
