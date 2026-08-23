@@ -40,8 +40,28 @@ One spec file per textbook system; no code per system.
 
 ## Status
 
-Pre-release scaffolding. The API and the `@syntax` annotation vocabulary
-are still settling; see `docs/` as stages land.
+Pre-release, but the layer stack is complete and tested end to end: three
+shipped specs (`forallx-calgary-2019`, `forallx-magnus`, `carnap-prop`),
+a behavioral corpus transcribed from the parsers this library replaces,
+round-trip laws for both print modes, and an acceptance test in which the
+real Aufbau compiler parses this library's engine output and certifies it
+tree-identical to hand-written spellings (`tests/engine-align.test.ts`).
+
+```ts
+import { parseSpec, printTerm, SurfaceLanguage } from "@aufbau/syntax";
+
+const { spec, diagnostics } = parseSpec(specSource); // an .mm0 + @syntax
+const language = new SurfaceLanguage(spec);
+
+const result = language.parse("AxEy~R(x,y)");        // student input
+if (result.ok) {
+  printTerm(language, result.term, "display");       // "∀x∃y¬R(x,y)"
+  printTerm(language, result.term, "engine");        // for the compiler
+}
+```
+
+See `docs/syntax-annotations.md` for the annotation reference and
+`docs/authoring-a-spec.md` for how to write a new system.
 
 Published entry point is TypeScript source (`src/index.ts`) — Bun and every
 mainstream bundler consume it directly; a `dist/` build step is deliberately
