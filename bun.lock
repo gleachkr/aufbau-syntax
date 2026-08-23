@@ -6,7 +6,7 @@
       "name": "@aufbau/syntax",
       "devDependencies": {
         "@aufbau/compiler": "0.0.6",
-        "@biomejs/biome": "^2.5.2",
+        "@biomejs/biome": "^2.5.10",
         "@types/bun": "^1.3.14",
         "typescript": "^6.0.3",
       },

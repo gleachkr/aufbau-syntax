@@ -1,0 +1,122 @@
+name: Publish to npm
+
+# Two kinds of release, exactly as in gleachkr/Aufbau:
+#
+#   - every push to main publishes a *canary* — the committed version with a
+#     timestamp/run/sha suffix, under the `canary` dist-tag, so a consumer can
+#     pin a specific commit without a release ceremony;
+#   - a `v1.2.3` tag publishes that version under `latest`, gated on the full
+#     test suite.
+#
+# Authentication is npm's trusted publishing (OIDC): no NPM_TOKEN secret, and
+# `--provenance` attests the workflow, commit, and repository that built the
+# tarball. See docs/releasing.md for the one-time npm-side setup.
+
+on:
+  push:
+    branches: [main]
+    tags: ["v*"]
+  workflow_dispatch:
+    inputs:
+      dry_run:
+        description: Run npm publish with --dry-run
+        required: false
+        default: false
+        type: boolean
+
+permissions:
+  contents: read
+  id-token: write
+
+concurrency:
+  group: npm-publish
+  cancel-in-progress: false
+
+jobs:
+  release_test:
+    if: github.ref_type == 'tag'
+    uses: ./.github/workflows/test.yml
+    permissions:
+      contents: read
+
+  publish:
+    needs: release_test
+    if: >-
+      always() &&
+      (needs.release_test.result == 'success' ||
+       needs.release_test.result == 'skipped')
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup Bun
+        uses: oven-sh/setup-bun@v2
+        with:
+          bun-version: 1.3.13
+
+      - name: Setup Node
+        uses: actions/setup-node@v4
+        with:
+          node-version: 24
+          registry-url: https://registry.npmjs.org
+
+      - name: Install dependencies
+        run: bun install --frozen-lockfile
+
+      - name: Check release version
+        run: |
+          node scripts/check-version.mjs
+          base_version="$(node -p 'require("./package.json").version')"
+
+          if [[ "${GITHUB_REF_TYPE}" == "tag" ]]; then
+            if [[ ! "${GITHUB_REF_NAME}" =~ \
+              ^v[0-9]+\.[0-9]+\.[0-9]+$ ]]; then
+              echo "Stable release tags must have the form v1.2.3" >&2
+              exit 1
+            fi
+
+            tag_version="${GITHUB_REF_NAME#v}"
+            node scripts/check-version.mjs "${tag_version}"
+            version="${base_version}"
+            npm_tag="latest"
+          else
+            stamp="$(date -u +'%Y%m%dT%H%M%SZ')"
+            sha="$(git rev-parse --short=12 HEAD)"
+            printf -v version '%s-canary.%s.%s.g%s' \
+              "${base_version}" "${stamp}" \
+              "${GITHUB_RUN_NUMBER}" "${sha}"
+            npm_tag="canary"
+          fi
+
+          echo "Publishing ${version} with npm tag ${npm_tag}"
+          echo "version=${version}" >> "${GITHUB_ENV}"
+          echo "npm_tag=${npm_tag}" >> "${GITHUB_ENV}"
+
+      - name: Build the package
+        run: bun run build
+
+      - name: Smoke-test the built package in Node
+        run: node scripts/smoke.mjs
+
+      - name: Set package version
+        run: |
+          npm version "${version}" \
+            --no-git-tag-version \
+            --allow-same-version
+
+      - name: Publish package
+        env:
+          DRY_RUN: ${{ github.event.inputs.dry_run || 'false' }}
+        run: |
+          publish_args=(
+            --access public
+            --tag "${npm_tag}"
+            --provenance
+          )
+
+          if [[ "${DRY_RUN}" == "true" ]]; then
+            publish_args+=(--dry-run)
+          fi
+
+          npm publish "${publish_args[@]}"

@@ -22,14 +22,14 @@
  * layer is deliberately regular — nesting facts belong to the parser.
  */
 
-import type { SurfaceLanguage } from "./parse";
+import type { SurfaceLanguage } from "./parse.js";
 import type {
   ElabRule,
   RuleCapture,
   RuleLiteral,
   RuleTemplateElement,
-} from "./reader/annotations";
-import type { Reading } from "./scan";
+} from "./reader/annotations.js";
+import type { Reading } from "./scan.js";
 
 /**
  * The matcher's pattern element: the reader's, plus an optional separator

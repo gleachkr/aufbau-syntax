@@ -4,7 +4,7 @@
  * what a node *means* is the consumer's business, via `@syntax role`.
  */
 
-import type { Span } from "./diagnostics";
+import type { Span } from "./diagnostics.js";
 
 export type Fixity = "general" | "infixl" | "infixr" | "prefix";
 

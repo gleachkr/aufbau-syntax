@@ -8,13 +8,13 @@
  * anything is the engine's business, and axiom bodies pass through opaque.
  */
 
-import { type Diagnostic, diagnostic, type Span } from "../diagnostics";
+import { type Diagnostic, diagnostic, type Span } from "../diagnostics.js";
 import {
   type ElabRule,
   type LintName,
   parseSyntaxAnnotation,
   type SyntaxAnnotation,
-} from "./annotations";
+} from "./annotations.js";
 import {
   type Annotation,
   type Binder,
@@ -22,7 +22,7 @@ import {
   type Precedence,
   parseStatements,
   type Statement,
-} from "./statements";
+} from "./statements.js";
 
 export interface SortInfo {
   readonly foreignAnnotations: readonly Annotation[];

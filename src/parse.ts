@@ -27,13 +27,13 @@
  * graph, per the spec.
  */
 
-import { type Diagnostic, diagnostic, type Span } from "./diagnostics";
-import { elaborate, remapSpan } from "./elab";
-import type { NotationInfo, Spec, TermInfo } from "./reader/spec";
-import type { Binder, TypeRef } from "./reader/statements";
-import { type Reading, Scanner } from "./scan";
-import type { AppTerm, Term, VariableTerm } from "./term";
-import { walkTerm } from "./term";
+import { type Diagnostic, diagnostic, type Span } from "./diagnostics.js";
+import { elaborate, remapSpan } from "./elab.js";
+import type { NotationInfo, Spec, TermInfo } from "./reader/spec.js";
+import type { Binder, TypeRef } from "./reader/statements.js";
+import { type Reading, Scanner } from "./scan.js";
+import type { AppTerm, Term, VariableTerm } from "./term.js";
+import { walkTerm } from "./term.js";
 
 const TEMPLATES: Record<string, string> = {
   unrecognized_character: "Unexpected character “{character}”.",

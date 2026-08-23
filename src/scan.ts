@@ -18,8 +18,8 @@
  * MM0's own application rule, read character-level.
  */
 
-import type { Span } from "./diagnostics";
-import type { Spec } from "./reader/spec";
+import type { Span } from "./diagnostics.js";
+import type { Spec } from "./reader/spec.js";
 
 export type NameRef =
   | { readonly kind: "term"; readonly term: string }

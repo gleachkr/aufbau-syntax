@@ -15,7 +15,7 @@
  * of math strings are scanned later, by the layer that owns them.
  */
 
-import type { Span } from "../diagnostics";
+import type { Span } from "../diagnostics.js";
 
 export type TokenKind =
   | "annotation"

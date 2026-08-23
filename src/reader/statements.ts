@@ -10,8 +10,8 @@
  * the next `;`, so a spec author sees every broken statement at once.
  */
 
-import { type Diagnostic, diagnostic, type Span } from "../diagnostics";
-import { type FileToken, lexFile } from "./lex";
+import { type Diagnostic, diagnostic, type Span } from "../diagnostics.js";
+import { type FileToken, lexFile } from "./lex.js";
 
 /** A math string, with the span of the whole `$ … $` lexeme. */
 export interface MathString {

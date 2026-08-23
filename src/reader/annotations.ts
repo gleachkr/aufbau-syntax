@@ -21,7 +21,7 @@
  * declarations, and variables ride the engine's own `@vars` annotation.
  */
 
-import { type Diagnostic, diagnostic, type Span } from "../diagnostics";
+import { type Diagnostic, diagnostic, type Span } from "../diagnostics.js";
 
 export const LINT_NAMES = [
   "parenthesize-binary-only",

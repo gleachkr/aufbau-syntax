@@ -72,16 +72,33 @@ if (result.ok) {
 See `docs/syntax-annotations.md` for the annotation reference and
 `docs/authoring-a-spec.md` for how to write a new system.
 
-Published entry point is TypeScript source (`src/index.ts`) — Bun and every
-mainstream bundler consume it directly; a `dist/` build step is deliberately
-deferred until publishing needs one.
+## Installing
+
+```sh
+bun add @aufbau/syntax          # released
+bun add @aufbau/syntax@canary   # the build of the current main
+```
+
+The package ships compiled JavaScript and declarations (`dist/`, emitted by
+`tsc` — there is nothing to bundle, since there are no runtime dependencies)
+plus the spec files themselves, reachable as
+`@aufbau/syntax/specs/forallx-calgary-2019.mm0` for any bundler with a text
+loader. Every release is published from CI with npm provenance; see
+`docs/releasing.md`.
 
 ## Development
 
 ```sh
 bun install
 bun run validate   # bun test + tsc --noEmit + biome ci
+bun run build      # dist/, what actually ships
+node scripts/smoke.mjs   # the built package, exercised from plain Node
 ```
+
+Relative imports inside `src/` carry `.js` extensions. `tsc` emits import
+specifiers verbatim, so that is what makes the published `dist/` loadable by
+Node's ESM resolver as well as by bundlers — Bun's own resolution is more
+forgiving than the world's, which is why the smoke test runs under Node.
 
 `src/` is platform-global-free — no DOM, no Bun, no Workers APIs — because
 its consumers are browsers, Cloudflare Workers, and Bun alike. A test

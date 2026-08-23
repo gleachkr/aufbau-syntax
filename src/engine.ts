@@ -10,8 +10,8 @@
  * (bound or free — Calgary's names included) a formula mentions.
  */
 
-import type { Term } from "./term";
-import { walkTerm } from "./term";
+import type { Term } from "./term.js";
+import { walkTerm } from "./term.js";
 
 /** The spec source with every `@syntax` annotation line removed. */
 export function stripSyntaxAnnotations(source: string): string {

@@ -23,9 +23,9 @@
  * both modes.
  */
 
-import { delaborate } from "./elab";
-import type { SurfaceLanguage } from "./parse";
-import type { Term } from "./term";
+import { delaborate } from "./elab.js";
+import type { SurfaceLanguage } from "./parse.js";
+import type { Term } from "./term.js";
 
 export type PrintMode = "display" | "engine";
 

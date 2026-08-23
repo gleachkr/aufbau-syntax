@@ -1,0 +1,26 @@
+{
+  // The publish build: JavaScript plus declarations, src only.
+  //
+  // `tsc` is the whole build — there is nothing to bundle (zero runtime
+  // dependencies) and a bundler would flatten the module graph that the
+  // declarations mirror. Relative imports carry `.js` extensions in source
+  // precisely so this emit is loadable by Node as it stands, and so the
+  // emitted `.d.ts` files resolve under every `moduleResolution` a consumer
+  // might have.
+  "extends": "./tsconfig.json",
+  "compilerOptions": {
+    "declaration": true,
+    // The tarball ships `dist/` and no sources, so the source maps carry the
+    // TypeScript inline. A declaration map would dangle — it can only point
+    // at an `src/` that is not there — so there is none.
+    "inlineSources": true,
+    "noEmit": false,
+    "outDir": "dist",
+    "rootDir": "src",
+    "sourceMap": true,
+    // No bun-types here: src/ is platform-global-free, and building without
+    // them makes that a compile error rather than a test failure.
+    "types": []
+  },
+  "include": ["src/**/*.ts"]
+}

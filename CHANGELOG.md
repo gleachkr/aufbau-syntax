@@ -21,6 +21,11 @@ Initial development. The layer stack is complete and tested end to end:
   alignment with the real Aufbau compiler is proven in
   `tests/engine-align.test.ts`.
 - Shipped specs: `forallx-calgary-2019`, `forallx-magnus`, `carnap-prop`.
+- Packaging and CI: a `tsc` build to `dist/` (JavaScript plus declarations),
+  a Node smoke test of the built artifact, and the two GitHub Actions
+  workflows Aufbau uses — tests on every push and pull request, canary
+  publishes from `main`, stable publishes from a `v1.2.3` tag, both with npm
+  provenance. See `docs/releasing.md`.
 
 Replaced before any release: the original `@syntax family` letter-schema
 mechanism (letter ranges, subscript lexing, template elaboration,
