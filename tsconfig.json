@@ -1,0 +1,31 @@
+{
+  "compilerOptions": {
+    "allowJs": false,
+    "exactOptionalPropertyTypes": true,
+    "forceConsistentCasingInFileNames": true,
+    "isolatedModules": true,
+    "lib": ["ES2022"],
+    "module": "ESNext",
+    "moduleDetection": "force",
+    "moduleResolution": "Bundler",
+    // Nothing is built by tsc — consumers bundle from TS source, and `check`
+    // only typechecks. Emitting would litter .js beside every module.
+    "noEmit": true,
+    "noFallthroughCasesInSwitch": true,
+    "noImplicitOverride": true,
+    "noImplicitReturns": true,
+    "noUncheckedIndexedAccess": true,
+    "noUnusedLocals": true,
+    "noUnusedParameters": true,
+    "resolveJsonModule": true,
+    "skipLibCheck": true,
+    "strict": true,
+    "target": "ES2022",
+    // bun-types only in tests; src/ must stay free of platform globals so
+    // browsers, Workers, and Bun can all consume it. The test below the
+    // library's own suite (tests/platform-free.test.ts) enforces that.
+    "types": ["bun-types"],
+    "verbatimModuleSyntax": true
+  },
+  "include": ["src/**/*.ts", "tests/**/*.ts"]
+}
