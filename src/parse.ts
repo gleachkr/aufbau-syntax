@@ -27,7 +27,12 @@
  */
 
 import { type Diagnostic, diagnostic, type Span } from "./diagnostics";
-import type { LetterFamily, Spec, TermInfo } from "./reader/spec";
+import type {
+  LetterFamily,
+  NotationInfo,
+  Spec,
+  TermInfo,
+} from "./reader/spec";
 import type { Binder, TypeRef } from "./reader/statements";
 import { type Reading, Scanner } from "./scan";
 import type { AppTerm, Term, VariableTerm } from "./term";
@@ -128,6 +133,9 @@ export class SurfaceLanguage {
   readonly closers = new Set<string>();
   readonly familyInfo = new Map<string, FamilyInfo>();
   readonly provableSort: string | null;
+  /** Per term, its last-declared notation — the canonical spelling. */
+  readonly canonical = new Map<string, NotationInfo>();
+  readonly coercionNames = new Set<string>();
   private readonly coercionPaths = new Map<
     string,
     readonly string[] | null
@@ -242,10 +250,45 @@ export class SurfaceLanguage {
       });
     }
 
+    for (const notation of spec.notations) {
+      this.canonical.set(notation.term, notation);
+    }
+
+    for (const coercion of spec.coercions) {
+      this.coercionNames.add(coercion.name);
+    }
+
     this.provableSort =
       [...spec.sorts.values()].find((sort) =>
         sort.modifiers.includes("provable"),
       )?.name ?? null;
+  }
+
+  /**
+   * A sentential connective: an infix constructor joining two things of
+   * the provable sort. This is the class forallx's bracket convention and
+   * the display printer's spacing both key on — `∧` is one, `=` over
+   * terms is not.
+   */
+  isConnective(term: string): boolean {
+    const info = this.spec.terms.get(term);
+    const provable = this.provableSort;
+    const notation = this.canonical.get(term);
+
+    return (
+      provable !== null &&
+      info !== undefined &&
+      notation !== undefined &&
+      notation.form === "simple" &&
+      notation.fixity !== "prefix" &&
+      info.binders.length === 2 &&
+      info.binders.every(
+        (binder) =>
+          !binder.binds &&
+          "sort" in binder.type &&
+          binder.type.sort === provable,
+      )
+    );
   }
 
   /** The coercion path from one sort to another; unique per mm0.md. */
@@ -302,8 +345,17 @@ export class SurfaceLanguage {
     return path;
   }
 
-  parse(text: string): ParseResult {
-    return new Parse(this, text).run();
+  /**
+   * Parse surface text. `lints: false` skips the spec's refusal
+   * conventions (bracket discipline, chain refusal, closed sentences) —
+   * for reading text that is grammatical but not surface-idiomatic, such
+   * as this library's own engine-mode output.
+   */
+  parse(
+    text: string,
+    options: { readonly lints?: boolean } = {},
+  ): ParseResult {
+    return new Parse(this, text, options.lints ?? true).run();
   }
 }
 
@@ -322,6 +374,7 @@ class Parse {
   constructor(
     private readonly lang: SurfaceLanguage,
     private readonly text: string,
+    private readonly lintsEnabled: boolean,
   ) {}
 
   run(): ParseResult {
@@ -386,7 +439,9 @@ class Parse {
       term = wrapped;
     }
 
-    this.lint(term);
+    if (this.lintsEnabled) {
+      this.lint(term);
+    }
 
     if (this.diagnostics.length > 0) {
       return { ok: false, diagnostics: this.diagnostics };

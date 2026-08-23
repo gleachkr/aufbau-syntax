@@ -5,12 +5,19 @@
  */
 
 export type { Diagnostic, Span } from "./diagnostics";
+export {
+  boundVariableBinders,
+  elaboratedDeclarations,
+  stripSyntaxAnnotations,
+} from "./engine";
 export type {
   ParseFailure,
   ParseResult,
   ParseSuccess,
 } from "./parse";
 export { SurfaceLanguage } from "./parse";
+export type { PrintMode } from "./print";
+export { printTerm } from "./print";
 export type {
   LintName,
   RewriteRule,
