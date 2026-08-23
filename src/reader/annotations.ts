@@ -25,6 +25,12 @@ export const LINT_NAMES = [
 
 export type LintName = (typeof LINT_NAMES)[number];
 
+/**
+ * How a letter family writes subscripts: `x_1` (Carnap's first-order
+ * convention), `P1` (its propositional one), or not at all.
+ */
+export type SubscriptForm = "bare" | "none" | "underscore";
+
 /** A capture in a rewrite pattern: `?ts:tm+` — name, class, quantifier. */
 export interface RuleCapture {
   readonly kind: "capture";
@@ -78,7 +84,7 @@ export type SyntaxAnnotation =
       readonly kind: "family";
       readonly class: string;
       readonly letters: ReadonlySet<string>;
-      readonly subscripts: boolean;
+      readonly subscripts: SubscriptForm;
     }
   | {
       readonly kind: "lint";
@@ -272,8 +278,17 @@ export function parseSyntaxAnnotation(
   switch (subcommand) {
     case "family": {
       const klass = words[1];
-      const subscripts = words[words.length - 1] === "subscripts";
-      const letterWords = words.slice(2, subscripts ? -1 : undefined);
+      const last = words[words.length - 1];
+      const subscripts: SubscriptForm =
+        last === "subscripts"
+          ? "underscore"
+          : last === "bare-subscripts"
+            ? "bare"
+            : "none";
+      const letterWords = words.slice(
+        2,
+        subscripts === "none" ? undefined : -1,
+      );
 
       if (klass === undefined || letterWords.length === 0) {
         return fail("syntax_bad_family", {}, span);

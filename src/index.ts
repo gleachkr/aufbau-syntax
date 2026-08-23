@@ -6,6 +6,12 @@
 
 export type { Diagnostic, Span } from "./diagnostics";
 export type {
+  ParseFailure,
+  ParseResult,
+  ParseSuccess,
+} from "./parse";
+export { SurfaceLanguage } from "./parse";
+export type {
   LintName,
   RewriteRule,
   RuleCapture,
@@ -44,3 +50,7 @@ export type {
   TypeRef,
 } from "./reader/statements";
 export { parseStatements } from "./reader/statements";
+export type { Reading, ScanPoint } from "./scan";
+export { Scanner } from "./scan";
+export type { AppTerm, Fixity, Term, VariableTerm } from "./term";
+export { walkTerm } from "./term";

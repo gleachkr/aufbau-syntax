@@ -13,6 +13,7 @@ import {
   type LintName,
   parseSyntaxAnnotation,
   type RewriteRule,
+  type SubscriptForm,
   type SyntaxAnnotation,
 } from "./annotations";
 import {
@@ -52,6 +53,8 @@ export interface CoercionInfo {
 export type NotationInfo =
   | {
       readonly form: "general";
+      /** The notation statement's own binders, which its variables name. */
+      readonly binders: readonly Binder[];
       readonly literals: readonly NotationLiteral[];
       readonly span: Span;
       readonly term: string;
@@ -68,7 +71,7 @@ export type NotationInfo =
 export interface LetterFamily {
   readonly class: string;
   readonly letters: ReadonlySet<string>;
-  readonly subscripts: boolean;
+  readonly subscripts: SubscriptForm;
   readonly target:
     | { readonly kind: "sort"; readonly sort: string }
     | { readonly kind: "template"; readonly term: string };
@@ -318,6 +321,7 @@ export function parseSpec(source: string): SpecParse {
       case "notation": {
         notations.push({
           form: "general",
+          binders: statement.binders,
           literals: statement.literals,
           span: statement.span,
           term: statement.term,

@@ -129,7 +129,7 @@ prefix all: $∀$ prec 46;
     expect(spec.families).toHaveLength(3);
     expect(spec.families[0]).toMatchObject({
       class: "var",
-      subscripts: true,
+      subscripts: "underscore",
       target: { kind: "sort", sort: "var" },
     });
     expect([...(spec.families[0]?.letters ?? [])].sort()).toEqual([
@@ -139,7 +139,7 @@ prefix all: $∀$ prec 46;
     ]);
     expect(spec.families[1]).toMatchObject({
       class: "const",
-      subscripts: false,
+      subscripts: "none",
       target: { kind: "template", term: "_const" },
     });
     expect(spec.families[2]?.target).toEqual({

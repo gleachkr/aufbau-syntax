@@ -1,0 +1,118 @@
+-- forallx: Calgary, 2019 edition — the surface language, as one artifact.
+--
+-- The declarations are ordinary MM0: sorts, constructors, coercions, and
+-- notations (several per constructor — the last declared is the canonical
+-- spelling a printer uses; the rest are accepted input). The `@syntax`
+-- annotations carry what MM0 cannot say: which letters name what (with
+-- their `_1` subscripts), which bracket pairs group, that the conditional
+-- rung refuses to chain, and forallx's two refusal conventions.
+--
+-- Families that take arguments are declared before the ones that do not,
+-- because a reader tries them in declaration order: `f(a)` is the function
+-- letter and bare `f` falls through to the constant, as in Carnap.
+
+--| @syntax brackets ( ) [ ]
+--| @syntax assoc-none 20
+--| @syntax lint parenthesize-binary-only
+--| @syntax lint closed-sentences
+--| @syntax display drop-outer-parens
+delimiter $ ( ) [ ] , $;
+
+provable sort wff;
+
+--| @syntax family var s-z subscripts
+sort var;
+sort name;
+sort tm;
+sort seq;
+
+term v2t (x: var): tm;
+coercion v2t: var > tm;
+term n2t (a: name): tm;
+coercion n2t: name > tm;
+term t2s (t: tm): seq;
+coercion t2s: tm > seq;
+
+-- Argument sequences, so a predicate or function letter is variadic:
+-- F(a), R(a,b), R(a,b,c) share one letter shape.
+term scomma (s t: seq): seq;
+infixl scomma: $,$ prec 10;
+
+--| @syntax family fn a-t subscripts
+--| @syntax role function
+term _fn (s: seq): tm;
+--| @syntax family const a-r subscripts
+--| @syntax role constant
+term _const: name;
+--| @syntax family pred A-Z subscripts
+--| @syntax role predicate
+term _pred (s: seq): wff;
+--| @syntax family atom A-Z subscripts
+--| @syntax role sentence-letter
+term _atom: wff;
+
+--| @syntax role negation
+term not (p: wff): wff;
+prefix not: $-$ prec 40;
+prefix not: $~$ prec 40;
+prefix not: $¬$ prec 40;
+
+--| @syntax role conjunction
+term and (p q: wff): wff;
+infixl and: $/\$ prec 30;
+infixl and: $^$ prec 30;
+infixl and: $&$ prec 30;
+infixl and: $∧$ prec 30;
+
+--| @syntax role disjunction
+term or (p q: wff): wff;
+infixl or: $\/$ prec 30;
+infixl or: $|$ prec 30;
+infixl or: $∨$ prec 30;
+
+--| @syntax role conditional
+term imp (p q: wff): wff;
+infixr imp: $->$ prec 20;
+infixr imp: $=>$ prec 20;
+infixr imp: $⊃$ prec 20;
+infixr imp: $>$ prec 20;
+infixr imp: $→$ prec 20;
+
+--| @syntax role biconditional
+term iff (p q: wff): wff;
+infixr iff: $<->$ prec 20;
+infixr iff: $<=>$ prec 20;
+infixr iff: $<>$ prec 20;
+infixr iff: $≡$ prec 20;
+infixr iff: $↔$ prec 20;
+
+--| @syntax role forall
+term all {x: var} (p: wff x): wff;
+prefix all: $A$ prec 40;
+prefix all: $@$ prec 40;
+prefix all: $∀$ prec 40;
+
+--| @syntax role exists
+term ex {x: var} (p: wff x): wff;
+prefix ex: $E$ prec 40;
+prefix ex: $3$ prec 40;
+prefix ex: $∃$ prec 40;
+
+--| @syntax role identity
+term ideq (s t: tm): wff;
+infixl ideq: $=$ prec 50;
+
+--| @syntax role inequality
+def neq (s t: tm): wff = $ ¬ (s = t) $;
+infixl neq: $!=$ prec 50;
+infixl neq: $≠$ prec 50;
+
+--| @syntax role falsum
+term bot: wff;
+notation bot: wff = ($!?$:max);
+notation bot: wff = ($_|_$:max);
+notation bot: wff = ($⊥$:max);
+
+--| @syntax role verum
+term top: wff;
+notation top: wff = ($⊤$:max);

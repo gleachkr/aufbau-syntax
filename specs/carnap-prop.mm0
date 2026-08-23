@@ -1,0 +1,33 @@
+-- Carnap's default `prop` propositional language, as the truth-table
+-- exercise type speaks it: ASCII connectives only, atoms are single Roman
+-- letters of either case with bare-digit subscripts (`P0`, `R12`), five
+-- separate precedence rungs (negation, then ∧ over ∨ over → over ↔), every
+-- rung chains, and plain parentheses may enclose anything.
+
+delimiter $ ( ) $;
+
+provable sort wff;
+
+--| @syntax family atom A-Z a-z bare-subscripts
+--| @syntax role sentence-letter
+term _atom: wff;
+
+--| @syntax role negation
+term not (p: wff): wff;
+prefix not: $~$ prec 50;
+
+--| @syntax role conjunction
+term and (p q: wff): wff;
+infixl and: $/\$ prec 40;
+
+--| @syntax role disjunction
+term or (p q: wff): wff;
+infixl or: $\/$ prec 35;
+
+--| @syntax role conditional
+term imp (p q: wff): wff;
+infixr imp: $->$ prec 30;
+
+--| @syntax role biconditional
+term iff (p q: wff): wff;
+infixl iff: $<->$ prec 25;
