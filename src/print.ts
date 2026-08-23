@@ -23,8 +23,8 @@
  * both modes.
  */
 
+import { delaborate } from "./elab";
 import type { SurfaceLanguage } from "./parse";
-import { resugar } from "./sugar";
 import type { Term } from "./term";
 
 export type PrintMode = "display" | "engine";
@@ -45,8 +45,8 @@ export function printTerm(
     printed = printed.slice(1, -1);
   }
 
-  if (mode === "display" && lang.spec.rewrites.length > 0) {
-    printed = resugar(lang, printed);
+  if (mode === "display" && lang.spec.elabRules.length > 0) {
+    printed = delaborate(lang, printed);
   }
 
   return printed;

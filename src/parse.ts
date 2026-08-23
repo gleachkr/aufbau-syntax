@@ -28,10 +28,10 @@
  */
 
 import { type Diagnostic, diagnostic, type Span } from "./diagnostics";
+import { elaborate, remapSpan } from "./elab";
 import type { NotationInfo, Spec, TermInfo } from "./reader/spec";
 import type { Binder, TypeRef } from "./reader/statements";
 import { type Reading, Scanner } from "./scan";
-import { desugar, remapSpan } from "./sugar";
 import type { AppTerm, Term, VariableTerm } from "./term";
 import { walkTerm } from "./term";
 
@@ -342,17 +342,17 @@ export class SurfaceLanguage {
   ): ParseResult {
     const lints = options.lints ?? true;
 
-    if (this.spec.rewrites.length === 0) {
+    if (this.spec.elabRules.length === 0) {
       return new Parse(this, text, lints).run();
     }
 
-    // Desugar first, then map every span in the outcome back through the
-    // origin map, so nothing downstream ever sees rewritten offsets.
-    const rewritten = desugar(this, text);
-    const result = new Parse(this, rewritten.text, lints).run();
+    // Elaborate first, then map every span in the outcome back through
+    // the origin map, so nothing downstream sees elaborated offsets.
+    const elaborated = elaborate(this, text);
+    const result = new Parse(this, elaborated.text, lints).run();
     const diagnostics = result.diagnostics.map((diag) => ({
       ...diag,
-      span: remapSpan(rewritten.origin, diag.span),
+      span: remapSpan(elaborated.origin, diag.span),
     }));
 
     if (!result.ok) {
@@ -361,10 +361,10 @@ export class SurfaceLanguage {
 
     const remapTerm = (term: Term): Term =>
       term.kind === "variable"
-        ? { ...term, span: remapSpan(rewritten.origin, term.span) }
+        ? { ...term, span: remapSpan(elaborated.origin, term.span) }
         : {
             ...term,
-            span: remapSpan(rewritten.origin, term.span),
+            span: remapSpan(elaborated.origin, term.span),
             args: term.args.map(remapTerm),
           };
 

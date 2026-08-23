@@ -3,9 +3,9 @@
  * turns an MM0 theory into a full surface-language spec.
  *
  * Annotations ride MM0's `--|` doc-comment channel, the same one Aufbau uses
- * for `@acui`, `@congr`, and the rest. Anything that is not `@syntax` is
- * *foreign*: preserved untouched for whoever owns it, never interpreted
- * here. The library also owns stripping `@syntax` lines before a theory is
+ * for `@acui`, `@congr`, `@rewrite`, and the rest. Anything that is not
+ * `@syntax` is *foreign*: preserved untouched for whoever owns it, never
+ * interpreted here. The library also owns stripping `@syntax` lines before a theory is
  * handed to the engine, which currently rejects annotations it does not
  * know.
  *
@@ -30,7 +30,7 @@ export const LINT_NAMES = [
 
 export type LintName = (typeof LINT_NAMES)[number];
 
-/** A capture in a rewrite pattern: `?ts:tm+` — name, class, quantifier. */
+/** A capture in an elab pattern: `?ts:tm+` — name, class, quantifier. */
 export interface RuleCapture {
   readonly kind: "capture";
   readonly name: string;
@@ -46,7 +46,7 @@ export interface RuleLiteral {
 
 export type RulePatternElement = RuleCapture | RuleLiteral;
 
-/** A capture reference in a rewrite template: `?ts` or joined `?ts,*`. */
+/** A capture reference in an elab template: `?ts` or joined `?ts,*`. */
 export interface RuleReference {
   readonly kind: "reference";
   readonly name: string;
@@ -56,7 +56,7 @@ export interface RuleReference {
 
 export type RuleTemplateElement = RuleLiteral | RuleReference;
 
-export interface RewriteRule {
+export interface ElabRule {
   readonly inputOnly: boolean;
   readonly pattern: readonly RulePatternElement[];
   readonly span: Span;
@@ -80,6 +80,11 @@ export type SyntaxAnnotation =
       readonly pairs: readonly (readonly [string, string])[];
     }
   | {
+      /** A bidirectional token rule: elaborate in, delaborate out. */
+      readonly kind: "elab";
+      readonly rule: ElabRule;
+    }
+  | {
       /** Supplied when an argument of its sort is missing; drops on print. */
       readonly kind: "elided";
     }
@@ -90,10 +95,6 @@ export type SyntaxAnnotation =
   | {
       readonly kind: "lint";
       readonly name: LintName;
-    }
-  | {
-      readonly kind: "rewrite";
-      readonly rule: RewriteRule;
     }
   | {
       readonly kind: "role";
@@ -109,8 +110,8 @@ const TEMPLATES: Record<string, string> = {
   syntax_unknown_lint: "unknown lint {name}; known lints: {known}",
   syntax_bad_display:
     "@syntax display wants drop-outer-parens or rotate-brackets <pairs…>",
-  syntax_bad_rewrite:
-    "@syntax rewrite wants: rewrite $ <pattern> $ => $ <template> $ [input-only]",
+  syntax_bad_elab:
+    "@syntax elab wants: elab $ <pattern> $ => $ <template> $ [input-only]",
   syntax_bad_pattern_element: "cannot read pattern element {element}",
   syntax_bad_template_element: "cannot read template element {element}",
   syntax_bad_role: "@syntax role wants one role name",
@@ -219,7 +220,7 @@ function parseTemplate(
   return elements;
 }
 
-const REWRITE = /^\$(.*?)\$\s*=>\s*\$(.*?)\$\s*(input-only)?\s*$/s;
+const ELAB = /^\$(.*?)\$\s*=>\s*\$(.*?)\$\s*(input-only)?\s*$/s;
 
 /**
  * Parse one annotation payload (the text after `--|`). Returns null for a
@@ -307,11 +308,11 @@ export function parseSyntaxAnnotation(
       return fail("syntax_bad_display", {}, span);
     }
 
-    case "rewrite": {
-      const match = REWRITE.exec(rest.slice("rewrite".length).trim());
+    case "elab": {
+      const match = ELAB.exec(rest.slice("elab".length).trim());
 
       if (match === null) {
-        return fail("syntax_bad_rewrite", {}, span);
+        return fail("syntax_bad_elab", {}, span);
       }
 
       const pattern = parsePattern(match[1] ?? "");
@@ -331,7 +332,7 @@ export function parseSyntaxAnnotation(
       }
 
       return ok({
-        kind: "rewrite",
+        kind: "elab",
         rule: {
           inputOnly: match[3] === "input-only",
           pattern,

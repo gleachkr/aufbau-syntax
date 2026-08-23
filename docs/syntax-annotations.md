@@ -1,7 +1,7 @@
 # The `@syntax` annotation reference
 
 `@syntax` annotations ride MM0's `--|` doc-comment channel — the same one
-Aufbau uses for `@acui`, `@congr`, `@vars` and the rest. One annotation per
+Aufbau uses for `@acui`, `@congr`, `@rewrite`, `@vars` and the rest. One annotation per
 line, attached to the statement that follows it. Anything that is not
 `@syntax` is *foreign*: preserved as data, never interpreted here — with
 one deliberate exception, `@vars`, which is read *and* preserved (see
@@ -96,7 +96,7 @@ deferred. So is free-standing adjacency (`ab` for `a*b` in a group-theory
 spec) — the annotation's meaning is written to cover it, the parser does
 not implement it yet.
 
-This is a *parser* behavior, deliberately not a rewrite rule: `AxFx`
+This is a *parser* behavior, deliberately not an elab rule: `AxFx`
 versus `Axy` can only be settled by trying the quantifier reading first
 and falling back — Carnap's ordered alternatives, reproduced.
 
@@ -141,16 +141,23 @@ The closed set of refusal conventions:
 - `rotate-brackets <pairs…>` — reserved: accepted and carried on the spec,
   not yet honored by the printer.
 
-## `rewrite $ <pattern> $ => $ <template> $ [input-only]`
+## `elab $ <pattern> $ => $ <template> $ [input-only]`
 
 ```text
---| @syntax rewrite $ ( ?x:var ) $ => $ ∀ ?x $
+--| @syntax elab $ ( ?x:var ) $ => $ ∀ ?x $
 ```
 
-A bidirectional token-rewrite rule. The pattern is a sequence of literal
-tokens and captures `?name:sort` (optionally `+` one-or-more or `?`
-optional); the template is literal tokens and references `?name`, where
-`?name<sep>*` joins a `+` capture's repeats with a separator token.
+A bidirectional token rule, named for the direction it runs on input:
+elaboration, surface spelling to canonical tokens, with the reverse pass
+delaborating canonical output back into the textbook's spelling. (The
+engine's own `@rewrite` is a different thing entirely — directed rules
+over *terms*, used for normalization during proof search. This layer never
+sees a term.)
+
+The pattern is a sequence of literal tokens and captures `?name:sort`
+(optionally `+` one-or-more or `?` optional); the template is literal
+tokens and references `?name`, where `?name<sep>*` joins a `+` capture's
+repeats with a separator token.
 
 A capture's class is a **sort**: it matches any single lexicon name — a
 `@vars` token or a nullary declared term — whose sort coerces into it
@@ -163,11 +170,12 @@ resuming after each replacement — no fixpoints, termination by
 construction. An origin map carries every offset back to the source, so
 diagnostics and term spans point at what the writer typed.
 
-Backward, the invertible rules run over display output in reverse order:
-template as pattern, pattern as replacement. A linear rule read backward
-*is* the display convention — the Quine rule above prints `∀x` as `(x)`.
-A rule that drops or duplicates a capture must be marked `input-only`
-(validated), and is skipped when printing.
+Backward — delaboration — the invertible rules run over display output in
+reverse order: template as pattern, pattern as replacement. A linear rule
+read backward *is* the display convention — the Quine rule above prints
+`∀x` as `(x)`. A rule that drops or duplicates a capture has no
+delaborator, so it must be marked `input-only` (validated) and is skipped
+when printing.
 
 ## `role <name>`
 

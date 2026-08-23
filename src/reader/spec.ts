@@ -4,15 +4,15 @@
  * logical system, validated.
  *
  * Validation here is about the spec being *coherent* (token conflicts,
- * dangling names, non-invertible rewrites); whether the theory proves
+ * dangling names, non-invertible elab rules); whether the theory proves
  * anything is the engine's business, and axiom bodies pass through opaque.
  */
 
 import { type Diagnostic, diagnostic, type Span } from "../diagnostics";
 import {
+  type ElabRule,
   type LintName,
   parseSyntaxAnnotation,
-  type RewriteRule,
   type SyntaxAnnotation,
 } from "./annotations";
 import {
@@ -95,7 +95,7 @@ export interface Spec {
   readonly lints: readonly LintName[];
   /** In declaration order; the last notation for a term is canonical. */
   readonly notations: readonly NotationInfo[];
-  readonly rewrites: readonly RewriteRule[];
+  readonly elabRules: readonly ElabRule[];
   readonly sorts: ReadonlyMap<string, SortInfo>;
   /** Every statement, in order, annotations intact — full fidelity. */
   readonly statements: readonly Statement[];
@@ -120,10 +120,10 @@ const TEMPLATES: Record<string, string> = {
     "precedence {prec} mixes infixl and infixr operators",
   grouping_token_conflict:
     "{token} is a grouping bracket and cannot also be a notation token",
-  rewrite_duplicate_capture: "capture {name} appears twice in the pattern",
-  rewrite_unknown_reference:
+  elab_duplicate_capture: "capture {name} appears twice in the pattern",
+  elab_unknown_reference:
     "the template references {name}, which the pattern does not capture",
-  rewrite_not_invertible:
+  elab_not_invertible:
     "capture {name} is not used exactly once in the template; mark the rule input-only if that is intended",
   juxtaposed_target:
     "@syntax juxtaposed must sit on a binary term whose arguments and result share one sort",
@@ -191,7 +191,7 @@ export function parseSpec(source: string): SpecParse {
   const terms = new Map<string, TermInfo>();
   const coercions: CoercionInfo[] = [];
   const notations: NotationInfo[] = [];
-  const rewrites: RewriteRule[] = [];
+  const elabRules: ElabRule[] = [];
   const lints: LintName[] = [];
   const assocNone = new Set<number>();
   const delimitersLeft = new Set<string>();
@@ -496,8 +496,8 @@ export function parseSpec(source: string): SpecParse {
         break;
       }
 
-      case "rewrite": {
-        rewrites.push(annotation.rule);
+      case "elab": {
+        elabRules.push(annotation.rule);
         break;
       }
     }
@@ -638,7 +638,7 @@ export function parseSpec(source: string): SpecParse {
     }
   }
 
-  for (const rule of rewrites) {
+  for (const rule of elabRules) {
     const captures = new Map<string, number>();
 
     for (const element of rule.pattern) {
@@ -646,7 +646,7 @@ export function parseSpec(source: string): SpecParse {
         if (captures.has(element.name)) {
           report(
             diagnostics,
-            "rewrite_duplicate_capture",
+            "elab_duplicate_capture",
             { name: element.name },
             rule.span,
           );
@@ -662,7 +662,7 @@ export function parseSpec(source: string): SpecParse {
         if (count === undefined) {
           report(
             diagnostics,
-            "rewrite_unknown_reference",
+            "elab_unknown_reference",
             { name: element.name },
             rule.span,
           );
@@ -676,7 +676,7 @@ export function parseSpec(source: string): SpecParse {
     if (!rule.inputOnly) {
       for (const [name, count] of captures) {
         if (count !== 1) {
-          report(diagnostics, "rewrite_not_invertible", { name }, rule.span);
+          report(diagnostics, "elab_not_invertible", { name }, rule.span);
         }
       }
     }
@@ -692,7 +692,7 @@ export function parseSpec(source: string): SpecParse {
       groupingPairs,
       lints,
       notations,
-      rewrites,
+      elabRules,
       sorts,
       statements,
       terms,

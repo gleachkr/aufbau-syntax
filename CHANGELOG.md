@@ -15,7 +15,7 @@ Initial development. The layer stack is complete and tested end to end:
 - Printer: display mode (canonical-last spellings, full-paren-drop-outer,
   derived spacing, elision, juxtaposed atoms) and engine mode, with
   round-trip laws under test.
-- Bidirectional token-rewrite layer (`@syntax rewrite`) with source-span
+- Bidirectional token-elaboration layer (`@syntax elab`) with source-span
   origin mapping.
 - Engine helpers: `stripSyntaxAnnotations`, `boundVariableBinders`;
   alignment with the real Aufbau compiler is proven in
@@ -31,3 +31,9 @@ Deliberate casualties: subscripted atoms (`x_1`, `P0`; the vocabulary is
 finite) and one-letter-two-kinds (bare `P` is now the seq-taking
 declaration applied to the elided empty sequence, so trees read
 `P(snil)`).
+
+Also renamed before any release: `@syntax rewrite` is now `@syntax elab`.
+The engine's `@rewrite` marks directed rules over *terms* for proof-search
+normalization, and theories carrying both annotations read badly; this
+layer only ever rewrites tokens, elaborating surface spelling on the way
+in and delaborating on the way out.

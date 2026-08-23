@@ -33,18 +33,19 @@ One spec file per textbook system; no code per system.
    variables.
 2. **Scanner** — character-level maximal munch over the declared tokens and
    lexicon names. No whitespace requirement; glue dissolves here.
-3. **Rewrite layer** — bidirectional token-pattern rules for textbook sugar
-   that really is local (`(x)Fx` ⇄ `∀xF(x)`, `(∀x)` ⇄ `∀x`). Regular by
-   design: one pass per rule, spans threaded through, linear rules invert
-   for printing. Juxtaposition is deliberately *not* here — it needs the
-   parser's backtracking — hence the `juxtaposed` flag below.
+3. **Elaboration layer** — bidirectional token-pattern rules (`@syntax
+   elab`) for textbook sugar that really is local (`(x)Fx` ⇄ `∀xF(x)`,
+   `(∀x)` ⇄ `∀x`). Regular by design: one pass per rule, spans threaded
+   through, linear rules delaborate for printing. Juxtaposition is
+   deliberately *not* here — it needs the parser's backtracking — hence
+   the `juxtaposed` flag below.
 4. **Math parser** — a faithful port of MM0's dynamic precedence parser,
    extended by declared conventions only: variant grouping pairs,
    `assoc-none` precedence levels, a closed set of lints, and per-term
    `elided` (bare `P` is `P(snil)`) and `juxtaposed` (adjacency at a sort
    denotes its combiner — `Rxy`) flags.
 5. **Printer** — last-declared notation is canonical; minimal parentheses
-   by precedence; display options; invertible rewrites run in reverse.
+   by precedence; display options; invertible elab rules delaborate.
 
 ## Status
 

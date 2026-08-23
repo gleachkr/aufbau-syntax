@@ -5,17 +5,17 @@ import { parseSpec, printTerm, SurfaceLanguage } from "../src/index";
 
 /**
  * Stage-4 coverage: the pre-2019 forallx (Magnus) spec — juxtaposed
- * variadic atoms as pure data — and the token-rewrite layer's two
+ * variadic atoms as pure data — and the token-elaboration layer's two
  * flagship quantifier surface forms, Quine's `(x)Fx` and Bergmann's
  * `(∀x)Fx`, in both directions.
  *
  * A finding worth keeping, discovered while building this: juxtaposed
- * application can NOT be a blind token rewrite — `AxFx` would be eaten
+ * application can NOT be a blind token elaboration — `AxFx` would be eaten
  * (`A` captured as a predicate before anything knows it is a quantifier
  * here). Only the parser's ordered backtracking can decide, exactly as
  * Carnap's ordered alternatives do — so juxtaposition is a parser
  * behavior, declared on the sequence combiner (`@syntax juxtaposed` on
- * scomma: adjacency at seq denotes it), and the rewrite layer keeps the
+ * scomma: adjacency at seq denotes it), and the elab layer keeps the
  * patterns that really are local.
  */
 
@@ -122,8 +122,8 @@ describe("forallx Magnus: juxtaposed atoms", () => {
   });
 });
 
-describe("quantifier surface forms via the rewrite layer", () => {
-  /** A Magnus-flavored mini theory plus one rewrite rule per test. */
+describe("quantifier surface forms via the elab layer", () => {
+  /** A Magnus-flavored mini theory plus one elab rule per test. */
   const BASE = `
 delimiter $ ( ) , $;
 provable sort wff;
@@ -164,7 +164,7 @@ prefix ex: $∃$ prec 50;
   }
 
   test("Quine: (x)Fx reads and prints as the bare-parens universal", () => {
-    const quine = language("--| @syntax rewrite $ ( ?x:var ) $ => $ ∀ ?x $");
+    const quine = language("--| @syntax elab $ ( ?x:var ) $ => $ ∀ ?x $");
     const parsed = quine.parse("(x)(y)Gxy");
 
     expect(parsed.ok).toBe(true);
@@ -183,8 +183,8 @@ prefix ex: $∃$ prec 50;
   test("Bergmann: (∀x) is accepted and restored", () => {
     const bergmann = language(
       [
-        "--| @syntax rewrite $ ( ∀ ?x:var ) $ => $ ∀ ?x $",
-        "--| @syntax rewrite $ ( ∃ ?x:var ) $ => $ ∃ ?x $",
+        "--| @syntax elab $ ( ∀ ?x:var ) $ => $ ∀ ?x $",
+        "--| @syntax elab $ ( ∃ ?x:var ) $ => $ ∃ ?x $",
       ].join("\n"),
     );
     const parsed = bergmann.parse("(∀x)(∃y)Gxy");
@@ -197,9 +197,9 @@ prefix ex: $∃$ prec 50;
     }
   });
 
-  test("diagnostics point at the original text, not the rewritten text", () => {
-    const quine = language("--| @syntax rewrite $ ( ?x:var ) $ => $ ∀ ?x $");
-    // The `#` sits at offset 6 of the source; desugaring `(x)` to `∀ x`
+  test("diagnostics point at the original text, not the elaborated text", () => {
+    const quine = language("--| @syntax elab $ ( ?x:var ) $ => $ ∀ ?x $");
+    // The `#` sits at offset 6 of the source; elaborating `(x)` to `∀ x`
     // shifts everything, and the origin map must shift it back.
     const failed = quine.parse("(x)Fx #");
 

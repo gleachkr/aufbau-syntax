@@ -1,17 +1,17 @@
 /**
- * The bidirectional token-rewrite layer — `@syntax rewrite` rules.
+ * The bidirectional token-elaboration layer — `@syntax elab` rules.
  *
- * Forward (desugaring, before the parser): each rule makes one
+ * Forward (elaboration, before the parser): each rule makes one
  * left-to-right pass over the text, matching at token boundaries only.
  * Where a rule matches, its template is spliced in — literals in their own
  * spelling, captures copied from the source — separated by spaces so the
  * result re-scans cleanly. No fixpoints: matching resumes *after* each
  * replacement, and rules run in declaration order, so the layer terminates
- * by construction. An origin map carries every rewritten offset back to
+ * by construction. An origin map carries every emitted offset back to
  * the source, so diagnostics and term spans point at what the writer
  * actually typed.
  *
- * Backward (resugaring, after the display printer): the same rules run
+ * Backward (delaboration, after the display printer): the same rules run
  * inverted — template as pattern, pattern as replacement — in reverse
  * declaration order, joined tight, skipping `input-only` rules. A linear
  * rule is a lens: the Quine rule `( ?x:var ) => ∀ ?x` read backward *is*
@@ -24,7 +24,7 @@
 
 import type { SurfaceLanguage } from "./parse";
 import type {
-  RewriteRule,
+  ElabRule,
   RuleCapture,
   RuleLiteral,
   RuleTemplateElement,
@@ -40,7 +40,7 @@ type MatchElement =
   | RuleLiteral
   | (RuleCapture & { readonly separator?: string | null });
 
-export interface Desugared {
+export interface Elaborated {
   /** For each offset of `text`, the source offset it came from. */
   readonly origin: readonly number[];
   readonly text: string;
@@ -233,7 +233,7 @@ function applyRule(
   pattern: readonly MatchElement[],
   template: readonly RuleTemplateElement[],
   separator: " " | "",
-): Desugared {
+): Elaborated {
   const originOf = (index: number): number =>
     origin[index] ?? origin[origin.length - 1] ?? 0;
   let out = "";
@@ -286,7 +286,7 @@ function applyRule(
 }
 
 /** The template read as a pattern: references become captures. */
-function invertTemplate(rule: RewriteRule): readonly MatchElement[] | null {
+function invertTemplate(rule: ElabRule): readonly MatchElement[] | null {
   const classes = new Map<string, { class: string; plural: boolean }>();
 
   for (const element of rule.pattern) {
@@ -325,7 +325,7 @@ function invertTemplate(rule: RewriteRule): readonly MatchElement[] | null {
 }
 
 /** The pattern read as a template: captures become plain references. */
-function invertPattern(rule: RewriteRule): readonly RuleTemplateElement[] {
+function invertPattern(rule: ElabRule): readonly RuleTemplateElement[] {
   return rule.pattern.map((element) =>
     element.kind === "literal"
       ? element
@@ -334,16 +334,16 @@ function invertPattern(rule: RewriteRule): readonly RuleTemplateElement[] {
 }
 
 /**
- * Apply every rewrite rule forward, in declaration order, returning the
- * desugared text and the offset map back to the source.
+ * Apply every elaboration rule forward, in declaration order, returning
+ * the elaborated text and the offset map back to the source.
  */
-export function desugar(lang: SurfaceLanguage, text: string): Desugared {
-  let current: Desugared = {
+export function elaborate(lang: SurfaceLanguage, text: string): Elaborated {
+  let current: Elaborated = {
     text,
     origin: [...text].map((_, index) => index),
   };
 
-  for (const rule of lang.spec.rewrites) {
+  for (const rule of lang.spec.elabRules) {
     current = applyRule(
       lang,
       current.text,
@@ -361,10 +361,10 @@ export function desugar(lang: SurfaceLanguage, text: string): Desugared {
  * Apply every invertible rule backward over display text, last declared
  * first, joining replacements tight (display is character-level anyway).
  */
-export function resugar(lang: SurfaceLanguage, text: string): string {
+export function delaborate(lang: SurfaceLanguage, text: string): string {
   let current = text;
 
-  for (const rule of [...lang.spec.rewrites].reverse()) {
+  for (const rule of [...lang.spec.elabRules].reverse()) {
     if (rule.inputOnly) {
       continue;
     }
@@ -388,7 +388,7 @@ export function resugar(lang: SurfaceLanguage, text: string): string {
   return current;
 }
 
-/** A rewritten-text span mapped back to source offsets. */
+/** An elaborated-text span mapped back to source offsets. */
 export function remapSpan(
   origin: readonly number[],
   span: { readonly start: number; readonly end: number },

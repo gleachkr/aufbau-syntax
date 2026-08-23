@@ -2,7 +2,7 @@
   "name": "@aufbau/syntax",
   "version": "0.0.1",
   "private": true,
-  "description": "Surface syntax over MM0: a statement reader, a character-level scanner, a faithful math-string parser, a pretty-printer, and a bidirectional token-rewrite layer for textbook logical notations.",
+  "description": "Surface syntax over MM0: a statement reader, a character-level scanner, a faithful math-string parser, a pretty-printer, and a bidirectional token-elaboration layer for textbook logical notations.",
   "license": "Apache-2.0",
   "type": "module",
   "main": "src/index.ts",

@@ -80,7 +80,7 @@ shipped specs are worked examples:
 
 7. **Sugar by definition.** `a ≠ b` is a `def` whose definiens is the
    negated identity — the tree holds `neq`, consumers may unfold, and the
-   printer uses its own canonical token. Prefer a def over a rewrite rule
+   printer uses its own canonical token. Prefer a def over an elab rule
    whenever the sugar is *semantic*.
 
 8. **Refusals and display** — `assoc-none`, `lint`, and `display` lines,

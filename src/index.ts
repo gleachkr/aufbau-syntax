@@ -15,8 +15,8 @@ export { SurfaceLanguage } from "./parse";
 export type { PrintMode } from "./print";
 export { printTerm } from "./print";
 export type {
+  ElabRule,
   LintName,
-  RewriteRule,
   RuleCapture,
   RuleLiteral,
   RulePatternElement,

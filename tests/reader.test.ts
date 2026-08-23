@@ -125,7 +125,7 @@ infixl and: $∧$ prec 30;
 --| @syntax lint parenthesize-binary-only
 --| @syntax lint closed-sentences
 --| @syntax display drop-outer-parens
---| @syntax rewrite $ ?F:wff ?ts:tm+ $ => $ ?F ( ?ts,* ) $
+--| @syntax elab $ ?F:wff ?ts:tm+ $ => $ ?F ( ?ts,* ) $
 term all {x: var} (p: wff x): wff;
 prefix all: $∀$ prec 46;
 `;
@@ -173,19 +173,19 @@ prefix all: $∀$ prec 46;
       "→",
     ]);
 
-    // The rewrite rule parsed structurally.
-    expect(spec.rewrites).toHaveLength(1);
-    expect(spec.rewrites[0]?.pattern).toEqual([
+    // The elab rule parsed structurally.
+    expect(spec.elabRules).toHaveLength(1);
+    expect(spec.elabRules[0]?.pattern).toEqual([
       { kind: "capture", name: "F", class: "wff", quantifier: "" },
       { kind: "capture", name: "ts", class: "tm", quantifier: "+" },
     ]);
-    expect(spec.rewrites[0]?.template).toEqual([
+    expect(spec.elabRules[0]?.template).toEqual([
       { kind: "reference", name: "F", separator: null },
       { kind: "literal", token: "(" },
       { kind: "reference", name: "ts", separator: "," },
       { kind: "literal", token: ")" },
     ]);
-    expect(spec.rewrites[0]?.inputOnly).toBe(false);
+    expect(spec.elabRules[0]?.inputOnly).toBe(false);
   });
 });
 
@@ -238,26 +238,26 @@ describe("spec validation", () => {
     expect(ids(result)).toEqual(["grouping_token_conflict"]);
   });
 
-  test("rewrite rules must be invertible unless marked input-only", () => {
+  test("elab rules must be invertible unless marked input-only", () => {
     const dropped = parseSpec(
-      `${WFF}--| @syntax rewrite $ ?a:wff ?b:wff $ => $ ?a $\nsort s2;`,
+      `${WFF}--| @syntax elab $ ?a:wff ?b:wff $ => $ ?a $\nsort s2;`,
     );
-    expect(ids(dropped)).toEqual(["rewrite_not_invertible"]);
+    expect(ids(dropped)).toEqual(["elab_not_invertible"]);
 
     const marked = parseSpec(
-      `${WFF}--| @syntax rewrite $ ?a:wff ?b:wff $ => $ ?a $ input-only\nsort s2;`,
+      `${WFF}--| @syntax elab $ ?a:wff ?b:wff $ => $ ?a $ input-only\nsort s2;`,
     );
     expect(ids(marked)).toEqual([]);
 
     const unknown = parseSpec(
-      `${WFF}--| @syntax rewrite $ ?a:wff $ => $ ?a ?b $\nsort s2;`,
+      `${WFF}--| @syntax elab $ ?a:wff $ => $ ?a ?b $\nsort s2;`,
     );
-    expect(ids(unknown)).toEqual(["rewrite_unknown_reference"]);
+    expect(ids(unknown)).toEqual(["elab_unknown_reference"]);
 
     const duplicated = parseSpec(
-      `${WFF}--| @syntax rewrite $ ?a:wff ?a:wff $ => $ ?a $ input-only\nsort s2;`,
+      `${WFF}--| @syntax elab $ ?a:wff ?a:wff $ => $ ?a $ input-only\nsort s2;`,
     );
-    expect(ids(duplicated)).toEqual(["rewrite_duplicate_capture"]);
+    expect(ids(duplicated)).toEqual(["elab_duplicate_capture"]);
   });
 
   test("juxtaposed demands a binary homogeneous term with a notation", () => {
@@ -316,8 +316,8 @@ describe("spec validation", () => {
     expect(ids(parseSpec("--| @syntax lint tidy-desk\nsort wff;"))).toEqual([
       "syntax_unknown_lint",
     ]);
-    expect(ids(parseSpec("--| @syntax rewrite nope\nsort wff;"))).toEqual([
-      "syntax_bad_rewrite",
+    expect(ids(parseSpec("--| @syntax elab nope\nsort wff;"))).toEqual([
+      "syntax_bad_elab",
     ]);
     expect(ids(parseSpec("--| @syntax brackets (\nsort wff;"))).toEqual([
       "syntax_bad_brackets",
