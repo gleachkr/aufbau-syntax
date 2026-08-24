@@ -15,6 +15,7 @@ export type { Diagnostic, Severity, Span } from "./diagnostics.js";
 export { boundVariableBinders, stripSyntaxAnnotations } from "./engine.js";
 export type {
   ParseFailure,
+  ParseMode,
   ParseResult,
   ParseSuccess,
 } from "./parse.js";

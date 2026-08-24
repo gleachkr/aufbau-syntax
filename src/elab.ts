@@ -274,9 +274,10 @@ function applyRule(
       continue;
     }
 
-    // Advance one whole token (the longest reading), staying on
-    // boundaries; an unrecognized character passes through untouched.
-    const step = Math.max(1, ...point.readings.map((r) => r.length));
+    // Advance one whole chunk, so the pass only ever resumes on a
+    // segmentation boundary; a chunk the vocabulary does not recognize
+    // passes through untouched.
+    const step = Math.max(1, point.chunk.length);
 
     copy(point.start, point.start + step);
     position = point.start + step;

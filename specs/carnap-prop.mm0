@@ -6,6 +6,14 @@
 -- finite vocabulary; the incumbent's bare-digit subscripts (`P0`) are a
 -- deliberate casualty.
 
+-- The surface delimiter set: where one chunk of student input ends and the
+-- next begins, fixed before anything is looked up. The lexicon letters are
+-- listed so `AxF(x)` reads without spaces, the operator spellings so `P->Q`
+-- does. Nothing here may be a string the vocabulary cannot answer to, and
+-- no lexicon name may be split by it; the reader checks both.
+--| @syntax delimiter $ A B C D E F G H I J K L M N O P Q R S T U V W X Y Z $
+--| @syntax delimiter $ a b c d e f g h i j k l m n o p q r s t u v w x y z $
+--| @syntax delimiter $ ( ) ~ /\ \/ -> <-> $
 delimiter $ ( ) $;
 
 provable sort wff;

@@ -125,6 +125,8 @@ describe("forallx Magnus: juxtaposed atoms", () => {
 describe("quantifier surface forms via the elab layer", () => {
   /** A Magnus-flavored mini theory plus one elab rule per test. */
   const BASE = `
+--| @syntax delimiter $ F G H x y z a b c $
+--| @syntax delimiter $ ( ) , -> ∀ ∃ $
 delimiter $ ( ) , $;
 provable sort wff;
 --| @vars x y z

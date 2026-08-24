@@ -122,6 +122,72 @@ async function propFails(source: string) {
   return first;
 }
 
+describe("segmentation comes before classification", () => {
+  test("chunk boundaries are the declared delimiters, nothing else", async () => {
+    const { language } = await calgaryReady;
+
+    expect(language.scanner.chunks("AxEy~R(x,y)")).toEqual([
+      "A",
+      "x",
+      "E",
+      "y",
+      "~",
+      "R",
+      "(",
+      "x",
+      ",",
+      "y",
+      ")",
+    ]);
+    // The longest spelling wins, and only where it was declared: `<->` is
+    // one delimiter, `_12` is one chunk the vocabulary cannot answer to.
+    expect(language.scanner.chunks("P<->Q")).toEqual(["P", "<->", "Q"]);
+    expect(language.scanner.chunks("F_12(a)")).toEqual([
+      "F",
+      "_12",
+      "(",
+      "a",
+      ")",
+    ]);
+  });
+
+  test("a spec that declares no delimiters reads only spaced input", async () => {
+    // The quiet default: `surfaceDelimiters` falls back to the theory's own
+    // `delimiter` statement, so tight textbook input is an opt-in a spec
+    // makes deliberately, never something it acquires by accident.
+    const { spec, diagnostics } = parseSpec(`
+delimiter $ ( ) $;
+provable sort wff;
+term P: wff;
+term Q: wff;
+term not (p: wff): wff;
+prefix not: $~$ prec 50;
+term and (p q: wff): wff;
+infixl and: $/\\$ prec 40;
+`);
+
+    expect(diagnostics).toEqual([]);
+
+    const language = new SurfaceLanguage(spec);
+
+    expect(language.scanner.chunks("~P /\\ Q")).toEqual(["~P", "/\\", "Q"]);
+    expect(language.parse("~ P /\\ Q").ok).toBe(true);
+    expect(language.parse("~P /\\ Q").ok).toBe(false);
+  });
+
+  test("engine text is read under the theory's own delimiters", async () => {
+    const { language } = await calgaryReady;
+    // `snil` is a name the surface set has no way to keep whole — its
+    // letters all delimit — which is precisely why engine mode exists.
+    const emitted = "((P (snil)) ∧ (Q (snil)))";
+
+    expect(language.scanner.chunks("snil")).toEqual(["s", "n", "i", "l"]);
+    expect(language.engineScanner.chunks("snil")).toEqual(["snil"]);
+    expect(language.parse(emitted, { lints: false }).ok).toBe(false);
+    expect(language.parse(emitted, { mode: "engine" }).ok).toBe(true);
+  });
+});
+
 describe("forallx Calgary 2019: atoms and terms", () => {
   test("a bare predicate letter is the elided empty sequence", async () => {
     expect(await calgary("P")).toBe("(P snil)");
@@ -133,8 +199,13 @@ describe("forallx Calgary 2019: atoms and terms", () => {
 
   test("subscripts are no longer part of the lexicon", async () => {
     // A deliberate deviation: the incumbent lexed `F_12` as one atom. The
-    // lexicon is now MM0's finite vocabulary, and `_` is nothing.
-    expect((await calgaryFails("F_12(a)")).id).toBe("unrecognized_character");
+    // lexicon is now MM0's finite vocabulary, and `_12` is nothing — the
+    // delimiters cut it off whole, so the whole of it is what is named.
+    const error = await calgaryFails("F_12(a)");
+
+    expect(error.id).toBe("unrecognized_chunk");
+    expect(error.params).toEqual({ chunk: "_12" });
+    expect(error.span).toEqual({ start: 1, end: 4 });
   });
 
   test("a lowercase letter is a function only when arguments follow", async () => {
@@ -337,11 +408,11 @@ describe("forallx Calgary 2019: errors a writer will actually hit", () => {
     expect((await calgaryFails("a")).id).toBe("term_not_sentence");
   });
 
-  test("an unknown character is named", async () => {
+  test("an unknown chunk is named", async () => {
     const error = await calgaryFails("P # Q");
 
-    expect(error.id).toBe("unrecognized_character");
-    expect(error.params).toEqual({ character: "#" });
+    expect(error.id).toBe("unrecognized_chunk");
+    expect(error.params).toEqual({ chunk: "#" });
     expect(error.span.start).toBe(2);
   });
 
@@ -367,7 +438,7 @@ describe("Carnap prop: atoms", () => {
   test("bare digit subscripts are gone — a deliberate deviation", async () => {
     // The incumbent lexed `P0` as one atom; the lexicon is now MM0's
     // finite vocabulary of declared names, and a digit is nothing.
-    expect((await propFails("P0")).id).toBe("unrecognized_character");
+    expect((await propFails("P0")).id).toBe("unrecognized_chunk");
   });
 });
 
@@ -398,7 +469,7 @@ describe("Carnap prop: precedence", () => {
 
 describe("Carnap prop: refusals", () => {
   test("unicode connectives are not part of this language", async () => {
-    expect((await propFails("P ∧ Q")).id).toBe("unrecognized_character");
+    expect((await propFails("P ∧ Q")).id).toBe("unrecognized_chunk");
   });
 
   test("stray input after a formula is reported", async () => {

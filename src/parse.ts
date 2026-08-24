@@ -1,8 +1,9 @@
 /**
  * The surface parser: a faithful port of MM0's operator-precedence math
- * parser (mm0.md, "the dynamic parser"), running over the character-level
- * scanner instead of MM0's whitespace lexer, with exactly three declared
- * extensions beyond the upstream grammar:
+ * parser (mm0.md, "the dynamic parser"), running over the delimiter
+ * scanner — MM0's own segmentation rule under a wider, declared delimiter
+ * set — with exactly three declared extensions beyond the upstream
+ * grammar:
  *
  *   1. **Grouping pairs** — `expression(max) → open expression(0) close`
  *      for every declared bracket pair, close matching open;
@@ -36,7 +37,7 @@ import type { AppTerm, Term, VariableTerm } from "./term.js";
 import { walkTerm } from "./term.js";
 
 const TEMPLATES: Record<string, string> = {
-  unrecognized_character: "Unexpected character “{character}”.",
+  unrecognized_chunk: "“{chunk}” is not part of this language.",
   expected_formula: "Expected a formula.",
   expected_formula_found: "Expected a formula but found “{token}”.",
   unexpected_token: "Unexpected “{token}”.",
@@ -104,6 +105,14 @@ export interface ParseFailure {
 
 export type ParseResult = ParseFailure | ParseSuccess;
 
+/**
+ * Which delimiter set cuts the input up. `surface` is student input, read
+ * under the spec's `surfaceDelimiters`; `engine` is this library's own
+ * engine-mode emission, read under the theory's own `delimiters` — the
+ * counterpart of `printTerm`'s two modes.
+ */
+export type ParseMode = "engine" | "surface";
+
 function binderSort(binder: Binder | undefined): string {
   if (binder === undefined || !("sort" in binder.type)) {
     return "";
@@ -115,7 +124,10 @@ function binderSort(binder: Binder | undefined): string {
 /** Everything derived from a Spec that parsing needs, built once. */
 export class SurfaceLanguage {
   readonly spec: Spec;
+  /** Student input: the wide surface delimiter set. */
   readonly scanner: Scanner;
+  /** Engine text: the same vocabulary under the theory's own delimiters. */
+  readonly engineScanner: Scanner;
   readonly heads = new Map<string, HeadEntry>();
   readonly infixes = new Map<string, InfixEntry>();
   readonly closeOf = new Map<string, string>();
@@ -138,6 +150,7 @@ export class SurfaceLanguage {
   constructor(spec: Spec) {
     this.spec = spec;
     this.scanner = new Scanner(spec);
+    this.engineScanner = new Scanner(spec, spec.delimiters);
 
     for (const notation of spec.notations) {
       const info = spec.terms.get(notation.term);
@@ -333,23 +346,39 @@ export class SurfaceLanguage {
   /**
    * Parse surface text. `lints: false` skips the spec's refusal
    * conventions (bracket discipline, chain refusal, closed sentences) —
-   * for reading text that is grammatical but not surface-idiomatic, such
-   * as this library's own engine-mode output.
+   * for reading text that is grammatical but not surface-idiomatic.
+   *
+   * `mode: "engine"` reads this library's own engine-mode output instead:
+   * the theory's delimiters rather than the surface set, no elaboration,
+   * and lints off unless asked for. Engine text is whitespace-separated
+   * and fully parenthesized, so it needs no wide delimiter set — and a
+   * surface elab rule would misread it, Quine's `( ?x:var )` happily
+   * eating the `(x)` inside `(F (x))`.
    */
   parse(
     text: string,
-    options: { readonly lints?: boolean } = {},
+    options: { readonly lints?: boolean; readonly mode?: ParseMode } = {},
   ): ParseResult {
-    const lints = options.lints ?? true;
+    const mode = options.mode ?? "surface";
+    const lints = options.lints ?? mode === "surface";
+
+    if (mode === "engine") {
+      return new Parse(this, this.engineScanner, text, lints).run();
+    }
 
     if (this.spec.elabRules.length === 0) {
-      return new Parse(this, text, lints).run();
+      return new Parse(this, this.scanner, text, lints).run();
     }
 
     // Elaborate first, then map every span in the outcome back through
     // the origin map, so nothing downstream sees elaborated offsets.
     const elaborated = elaborate(this, text);
-    const result = new Parse(this, elaborated.text, lints).run();
+    const result = new Parse(
+      this,
+      this.scanner,
+      elaborated.text,
+      lints,
+    ).run();
     const diagnostics = result.diagnostics.map((diag) => ({
       ...diag,
       span: remapSpan(elaborated.origin, diag.span),
@@ -386,6 +415,7 @@ class Parse {
 
   constructor(
     private readonly lang: SurfaceLanguage,
+    private readonly scanner: Scanner,
     private readonly text: string,
     private readonly lintsEnabled: boolean,
   ) {}
@@ -394,7 +424,7 @@ class Parse {
     const parsed = this.parseExpr(0);
 
     if (parsed !== null) {
-      const point = this.lang.scanner.at(this.text, this.position);
+      const point = this.scanner.at(this.text, this.position);
 
       if (!point.atEnd) {
         const trial = this.bestTrialFailure;
@@ -403,9 +433,9 @@ class Parse {
           this.diagnostics.push(trial.diag);
         } else if (point.readings.length === 0) {
           this.report(
-            "unrecognized_character",
-            { character: this.text[point.start] ?? "" },
-            { start: point.start, end: point.start + 1 },
+            "unrecognized_chunk",
+            { chunk: point.chunk },
+            { start: point.start, end: point.start + point.chunk.length },
           );
         } else {
           const reading = point.readings[0];
@@ -546,7 +576,7 @@ class Parse {
     }
 
     for (;;) {
-      const point = this.lang.scanner.at(this.text, this.position);
+      const point = this.scanner.at(this.text, this.position);
 
       if (point.atEnd) {
         return left;
@@ -599,7 +629,7 @@ class Parse {
   }
 
   private parsePrimary(min: number): Term | null {
-    const point = this.lang.scanner.at(this.text, this.position);
+    const point = this.scanner.at(this.text, this.position);
 
     if (point.atEnd) {
       return this.report(
@@ -612,11 +642,14 @@ class Parse {
       );
     }
 
+    // The chunk's boundaries were fixed by the delimiters, so the whole of
+    // what the writer wrote between them is what nothing recognizes — not
+    // just its first character.
     if (point.readings.length === 0) {
       return this.report(
-        "unrecognized_character",
-        { character: this.text[point.start] ?? "" },
-        { start: point.start, end: point.start + 1 },
+        "unrecognized_chunk",
+        { chunk: point.chunk },
+        { start: point.start, end: point.start + point.chunk.length },
       );
     }
 
@@ -716,7 +749,7 @@ class Parse {
       return null;
     }
 
-    const point = this.lang.scanner.at(this.text, this.position);
+    const point = this.scanner.at(this.text, this.position);
     const reading = point.readings.find(
       (r) => r.kind === "token" && r.token === close,
     );
@@ -839,7 +872,7 @@ class Parse {
 
     for (const part of entry.parts) {
       if (part.kind === "constant") {
-        const point = this.lang.scanner.at(this.text, this.position);
+        const point = this.scanner.at(this.text, this.position);
         const reading = point.readings.find(
           (r) => r.kind === "token" && r.token === part.token,
         );
@@ -931,7 +964,7 @@ class Parse {
   }
 
   private expectBoundVariable(sort: string): VariableTerm | null {
-    const point = this.lang.scanner.at(this.text, this.position);
+    const point = this.scanner.at(this.text, this.position);
     const reading = point.readings.find(
       (r): r is Reading & { kind: "name" } =>
         r.kind === "name" && r.ref.kind === "var" && r.ref.sort === sort,
@@ -1004,7 +1037,7 @@ class Parse {
 
     for (const binder of argBinders) {
       const target = binderSort(binder);
-      const point = this.lang.scanner.at(this.text, this.position);
+      const point = this.scanner.at(this.text, this.position);
       const open = this.lang.spec.groupingPairs[0]?.[0] ?? "(";
       const close = this.lang.spec.groupingPairs[0]?.[1] ?? ")";
       const openReading = point.readings.find(
@@ -1020,7 +1053,7 @@ class Parse {
           return null;
         }
 
-        const closePoint = this.lang.scanner.at(this.text, this.position);
+        const closePoint = this.scanner.at(this.text, this.position);
         const closeReading = closePoint.readings.find(
           (r) => r.kind === "token" && r.token === close,
         );
@@ -1142,7 +1175,7 @@ class Parse {
    * is ambiguous under variadic sequences and stays deferred.
    */
   private glueOperand(target: string): Term | null {
-    const point = this.lang.scanner.at(this.text, this.position);
+    const point = this.scanner.at(this.text, this.position);
 
     for (const reading of point.readings) {
       if (reading.kind === "name") {

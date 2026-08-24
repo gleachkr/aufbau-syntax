@@ -1,20 +1,32 @@
 /**
- * The surface scanner: character-level maximal munch over a spec's token
- * vocabulary and lexicon names.
+ * The surface scanner: segment, then classify.
  *
- * Where MM0's own lexer splits math strings on whitespace and single-byte
- * delimiters, students write textbook notation with no spaces at all —
- * `∀xF(x)`, `~~P`, `AxEy~R(x,y)`. So this scanner asks, at each position:
- * which declared notation token starts here (longest match wins), and which
- * lexicon name? A position can answer *both* — Calgary's `A` is at once a
- * spelling of ∀ and the predicate letter A — so the scanner reports
- * alternative readings, each with its own length, and the parser picks by
- * context.
+ * Segmentation comes from the declared delimiter set alone — MM0's own
+ * tokenizer rule, in `delimiters.ts` — and never consults the term or
+ * notation tables. Only once a chunk's boundaries are fixed is the chunk
+ * looked up: as a notation token, as a lexicon name, or as both. Calgary's
+ * `A` is at once a spelling of ∀ and the predicate letter A, so the scanner
+ * reports both readings and the parser picks by backtracking.
  *
- * The vocabulary it classifies against is `surfaceVocabulary`, derived from
- * the spec rather than annotated.
+ * The order is the whole point. Under the character-level maximal munch
+ * this replaces, declaring a term could silently re-read an existing
+ * string: adding `term ab: tm;` to Magnus turned `Fab` from `F` of `a` and
+ * `b` into `F` of `ab`. Boundaries fixed before any lookup cannot do that,
+ * which is exactly what MM0 buys by keeping `delimiter` separate from
+ * `notation`.
+ *
+ * The delimiter set is a parameter: student input is read under the spec's
+ * `surfaceDelimiters`, and this library's own engine-mode output under the
+ * theory's own `delimiters`.
  */
 
+import {
+  chunkAt,
+  type DelimiterRules,
+  type DelimiterSet,
+  delimiterRules,
+  segment,
+} from "./delimiters.js";
 import type { Span } from "./diagnostics.js";
 import type { Spec } from "./reader/spec.js";
 import { type NameRef, surfaceVocabulary } from "./vocabulary.js";
@@ -35,33 +47,34 @@ export type Reading =
     };
 
 export interface ScanPoint {
-  /** Position after leading whitespace; readings start here. */
+  /** Position after leading whitespace; the chunk starts here. */
   readonly start: number;
-  /** Longest-first notation reading, then the longest name reading. Empty
-   * at end of input or on an unrecognized character. */
+  /** The chunk at `start`, before classification. Empty at end of input. */
+  readonly chunk: string;
+  /** The notation reading, then the name reading — whichever the chunk
+   * answers to. Empty at end of input, or when it answers to neither. */
   readonly readings: readonly Reading[];
   readonly atEnd: boolean;
 }
 
 export class Scanner {
-  /** Notation and grouping tokens, longest first. */
-  private readonly tokens: readonly string[];
-  /** Lexicon names, longest first, each with what it refers to. */
-  private readonly names: readonly (readonly [string, NameRef])[];
+  private readonly rules: DelimiterRules;
+  /** Notation and grouping tokens. */
+  private readonly tokens: ReadonlySet<string>;
+  /** Lexicon names, each with what it refers to. */
+  private readonly names: ReadonlyMap<string, NameRef>;
 
-  constructor(spec: Spec) {
+  constructor(spec: Spec, delimiters: DelimiterSet = spec.surfaceDelimiters) {
     const { names, tokens } = surfaceVocabulary(spec);
 
-    this.tokens = [...tokens].sort((a, b) => b.length - a.length);
-    this.names = [...names.entries()].sort(
-      (a, b) => b[0].length - a[0].length,
-    );
+    this.rules = delimiterRules(delimiters);
+    this.names = names;
+    this.tokens = tokens;
   }
 
   /**
-   * The alternative readings at `position` in `text`, after skipping
-   * whitespace. The list is ordered: the longest matching notation token
-   * first, then the longest matching name.
+   * The chunk at `position` in `text`, after skipping whitespace, and what
+   * it can be read as: the notation token first, then the lexicon name.
    */
   at(text: string, position: number): ScanPoint {
     let start = position;
@@ -71,26 +84,32 @@ export class Scanner {
     }
 
     if (start >= text.length) {
-      return { start, readings: [], atEnd: true };
+      return { start, chunk: "", readings: [], atEnd: true };
     }
 
+    const chunk = chunkAt(text, start, this.rules);
     const readings: Reading[] = [];
 
-    for (const token of this.tokens) {
-      if (text.startsWith(token, start)) {
-        readings.push({ kind: "token", token, length: token.length });
-        break;
-      }
+    if (this.tokens.has(chunk)) {
+      readings.push({ kind: "token", token: chunk, length: chunk.length });
     }
 
-    for (const [name, ref] of this.names) {
-      if (text.startsWith(name, start)) {
-        readings.push({ kind: "name", name, ref, length: name.length });
-        break;
-      }
+    const ref = this.names.get(chunk);
+
+    if (ref !== undefined) {
+      readings.push({ kind: "name", name: chunk, ref, length: chunk.length });
     }
 
-    return { start, readings, atEnd: false };
+    return { start, chunk, readings, atEnd: false };
+  }
+
+  /**
+   * The chunk sequence of `text`, before any classification — the view
+   * that shows what the delimiters did, independently of what the spec's
+   * vocabulary happens to contain.
+   */
+  chunks(text: string): string[] {
+    return segment(text, this.rules);
   }
 
   /** The span a reading occupies from a scan point. */

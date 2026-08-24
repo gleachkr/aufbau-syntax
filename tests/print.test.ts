@@ -143,9 +143,11 @@ describe("Calgary engine mode", () => {
     ]) {
       const { language, term: parsed } = await term(source);
       const emitted = printTerm(language, parsed, "engine");
-      // Engine text is engine syntax, not surface idiom — it groups atoms
-      // freely — so the surface refusal conventions are switched off.
-      const reparsed = language.parse(emitted, { lints: false });
+      // Engine text is engine syntax, not surface idiom: it is read under
+      // the theory's own delimiters (so `snil` stays one name where the
+      // surface set would split it into four letters), and the surface
+      // refusal conventions are switched off with it.
+      const reparsed = language.parse(emitted, { mode: "engine" });
 
       expect(reparsed.ok, emitted).toBe(true);
 
