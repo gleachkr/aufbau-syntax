@@ -11,19 +11,15 @@
  * alternative readings, each with its own length, and the parser picks by
  * context.
  *
- * The name vocabulary is derived, not annotated: every token in a sort's
- * `@vars` pool, and every declared term that has no notation of its own,
- * binds nothing, and is not a coercion. A term *with* a notation is
- * spelled by that notation; a term without one is spelled by its name —
- * MM0's own application rule, read character-level.
+ * The vocabulary it classifies against is `surfaceVocabulary`, derived from
+ * the spec rather than annotated.
  */
 
 import type { Span } from "./diagnostics.js";
 import type { Spec } from "./reader/spec.js";
+import { type NameRef, surfaceVocabulary } from "./vocabulary.js";
 
-export type NameRef =
-  | { readonly kind: "term"; readonly term: string }
-  | { readonly kind: "var"; readonly sort: string };
+export type { NameRef } from "./vocabulary.js";
 
 export type Reading =
   | {
@@ -54,50 +50,9 @@ export class Scanner {
   private readonly names: readonly (readonly [string, NameRef])[];
 
   constructor(spec: Spec) {
-    const vocabulary = new Set<string>();
-    const notated = new Set<string>();
+    const { names, tokens } = surfaceVocabulary(spec);
 
-    for (const notation of spec.notations) {
-      notated.add(notation.term);
-
-      if (notation.form === "simple") {
-        vocabulary.add(notation.token);
-      } else {
-        for (const literal of notation.literals) {
-          if (literal.kind === "constant") {
-            vocabulary.add(literal.token);
-          }
-        }
-      }
-    }
-
-    for (const [open, close] of spec.groupingPairs) {
-      vocabulary.add(open);
-      vocabulary.add(close);
-    }
-
-    this.tokens = [...vocabulary].sort((a, b) => b.length - a.length);
-
-    const coercions = new Set(spec.coercions.map((c) => c.name));
-    const names = new Map<string, NameRef>();
-
-    for (const sort of spec.sorts.values()) {
-      for (const token of sort.vars) {
-        names.set(token, { kind: "var", sort: sort.name });
-      }
-    }
-
-    for (const term of spec.terms.values()) {
-      if (
-        !notated.has(term.name) &&
-        !coercions.has(term.name) &&
-        !term.binders.some((binder) => binder.binds) &&
-        !names.has(term.name)
-      ) {
-        names.set(term.name, { kind: "term", term: term.name });
-      }
-    }
-
+    this.tokens = [...tokens].sort((a, b) => b.length - a.length);
     this.names = [...names.entries()].sort(
       (a, b) => b[0].length - a[0].length,
     );

@@ -8,7 +8,19 @@
  * anything is the engine's business, and axiom bodies pass through opaque.
  */
 
-import { type Diagnostic, diagnostic, type Span } from "../diagnostics.js";
+import {
+  type DelimiterSet,
+  delimiterRules,
+  isReachableChunk,
+  segment,
+} from "../delimiters.js";
+import {
+  type Diagnostic,
+  diagnostic,
+  type Severity,
+  type Span,
+} from "../diagnostics.js";
+import { surfaceVocabulary } from "../vocabulary.js";
 import {
   type ElabRule,
   type LintName,
@@ -82,10 +94,11 @@ export type NotationInfo =
 export interface Spec {
   readonly assocNone: ReadonlySet<number>;
   readonly coercions: readonly CoercionInfo[];
-  readonly delimiters: {
-    readonly left: ReadonlySet<string>;
-    readonly right: ReadonlySet<string>;
-  };
+  /**
+   * The theory's own `delimiter` statement — how the *engine* cuts up math
+   * strings. Single bytes, because that is all the engine's table holds.
+   */
+  readonly delimiters: DelimiterSet;
   readonly display: {
     readonly dropOuterParens: boolean;
     readonly rotateBrackets: readonly (readonly [string, string])[] | null;
@@ -99,6 +112,14 @@ export interface Spec {
   readonly sorts: ReadonlyMap<string, SortInfo>;
   /** Every statement, in order, annotations intact — full fidelity. */
   readonly statements: readonly Statement[];
+  /**
+   * How *student* input is cut up: `delimiters` unioned with every
+   * `@syntax delimiter` the spec declares. A spec that declares none gets
+   * the theory's set unchanged — so writing textbook notation tight
+   * (`~~P`, `Fxy`) is an explicit opt-in, never something a spec acquires
+   * by accident.
+   */
+  readonly surfaceDelimiters: DelimiterSet;
   readonly terms: ReadonlyMap<string, TermInfo>;
 }
 
@@ -135,6 +156,12 @@ const TEMPLATES: Record<string, string> = {
   vars_term_conflict:
     "@vars token {token} is also a declared term; a name can be only one",
   role_target: "@syntax role must sit on a term",
+  delimiter_unknown:
+    "delimiter {token} is neither a notation token, a bracket, nor a lexicon name, so no input can ever be read as it",
+  delimiter_token_not_delimited:
+    "{token} is not a surface delimiter; it is only read when whitespace or a delimiter bounds it, so it will run into an adjacent token",
+  delimiter_unreachable_name:
+    "the delimiters split {name} into {chunks}, so it can never be read as one name",
 };
 
 function report(
@@ -142,8 +169,11 @@ function report(
   id: string,
   params: Record<string, string>,
   span: Span,
+  severity: Severity = "error",
 ): void {
-  diagnostics.push(diagnostic(id, TEMPLATES[id] ?? id, params, span));
+  diagnostics.push(
+    diagnostic(id, TEMPLATES[id] ?? id, params, span, severity),
+  );
 }
 
 /** The binder count an application must fill (bound and regular alike). */
@@ -182,6 +212,107 @@ function meaningOf(notation: NotationInfo): TokenMeaning | null {
   return { key: "general", term: notation.term };
 }
 
+/** Where each notation constant was declared, for pointing a diagnostic. */
+function tokenSpans(spec: Spec): Map<string, Span> {
+  const spans = new Map<string, Span>();
+
+  for (const notation of spec.notations) {
+    const constants =
+      notation.form === "simple"
+        ? [notation.token]
+        : notation.literals
+            .filter((literal) => literal.kind === "constant")
+            .map((literal) => literal.token);
+
+    for (const token of constants) {
+      if (!spans.has(token)) {
+        spans.set(token, notation.span);
+      }
+    }
+  }
+
+  return spans;
+}
+
+/**
+ * The surface delimiter set, checked against the vocabulary it has to cut
+ * up. Only runs when the spec declares `@syntax delimiter`: a spec that
+ * declares none is read under the theory's own delimiters, where tokens
+ * are whitespace-separated and none of this can bite.
+ */
+function checkSurfaceDelimiters(
+  spec: Spec,
+  declarations: readonly { entries: readonly string[]; span: Span }[],
+  diagnostics: Diagnostic[],
+): void {
+  const fallback = declarations[0]?.span;
+
+  if (fallback === undefined) {
+    return;
+  }
+
+  const vocabulary = surfaceVocabulary(spec);
+  const rules = delimiterRules(spec.surfaceDelimiters);
+  const declared = new Set([
+    ...spec.surfaceDelimiters.left,
+    ...spec.surfaceDelimiters.right,
+  ]);
+
+  // A delimiter nothing can be classified as cuts input into pieces the
+  // parser must then reject — a boundary with no meaning behind it.
+  for (const { entries, span } of declarations) {
+    for (const entry of entries) {
+      if (!vocabulary.tokens.has(entry) && !vocabulary.names.has(entry)) {
+        report(diagnostics, "delimiter_unknown", { token: entry }, span);
+      }
+    }
+  }
+
+  // A token that is not itself a delimiter still reads when whitespace or a
+  // delimiter bounds it — `P->Q` is fine with the letters declared — so this
+  // is advice, not breakage. What it warns about is two such tokens
+  // meeting: `->~` is one chunk unless one of them delimits.
+  const spans = tokenSpans(spec);
+
+  for (const token of vocabulary.tokens) {
+    if (!declared.has(token)) {
+      report(
+        diagnostics,
+        "delimiter_token_not_delimited",
+        { token },
+        spans.get(token) ?? fallback,
+        "warning",
+      );
+    }
+  }
+
+  // A name the delimiters split apart is unreachable: segmentation happens
+  // before anything knows the name exists, so no bracketing recovers it.
+  // Elided terms are exempt — they are supplied by the parser and dropped
+  // by the printer, never typed.
+  for (const [name, ref] of vocabulary.names) {
+    if (ref.kind === "term" && spec.terms.get(ref.term)?.elided === true) {
+      continue;
+    }
+
+    if (isReachableChunk(name, rules)) {
+      continue;
+    }
+
+    const span =
+      ref.kind === "term"
+        ? spec.terms.get(ref.term)?.span
+        : spec.sorts.get(ref.sort)?.span;
+
+    report(
+      diagnostics,
+      "delimiter_unreachable_name",
+      { chunks: segment(name, rules).join(" "), name },
+      span ?? fallback,
+    );
+  }
+}
+
 export function parseSpec(source: string): SpecParse {
   const { statements, diagnostics: parseDiagnostics } =
     parseStatements(source);
@@ -196,6 +327,12 @@ export function parseSpec(source: string): SpecParse {
   const assocNone = new Set<number>();
   const delimitersLeft = new Set<string>();
   const delimitersRight = new Set<string>();
+  const surfaceLeft = new Set<string>();
+  const surfaceRight = new Set<string>();
+  const surfaceDeclarations: {
+    readonly entries: readonly string[];
+    readonly span: Span;
+  }[] = [];
   const groupingPairs: (readonly [string, string])[] = [["(", ")"]];
   let dropOuterParens = false;
   let rotateBrackets: readonly (readonly [string, string])[] | null = null;
@@ -474,6 +611,22 @@ export function parseSpec(source: string): SpecParse {
         break;
       }
 
+      case "delimiter": {
+        for (const entry of annotation.left) {
+          surfaceLeft.add(entry);
+        }
+
+        for (const entry of annotation.right) {
+          surfaceRight.add(entry);
+        }
+
+        surfaceDeclarations.push({
+          entries: [...new Set([...annotation.left, ...annotation.right])],
+          span,
+        });
+        break;
+      }
+
       case "assoc-none": {
         assocNone.add(annotation.prec);
         break;
@@ -682,20 +835,26 @@ export function parseSpec(source: string): SpecParse {
     }
   }
 
-  return {
-    diagnostics,
-    spec: {
-      assocNone,
-      coercions,
-      delimiters: { left: delimitersLeft, right: delimitersRight },
-      display: { dropOuterParens, rotateBrackets },
-      groupingPairs,
-      lints,
-      notations,
-      elabRules,
-      sorts,
-      statements,
-      terms,
+  const spec: Spec = {
+    assocNone,
+    coercions,
+    delimiters: { left: delimitersLeft, right: delimitersRight },
+    display: { dropOuterParens, rotateBrackets },
+    groupingPairs,
+    lints,
+    notations,
+    elabRules,
+    sorts,
+    statements,
+    // The union: what the engine splits on, plus what the textbook does.
+    surfaceDelimiters: {
+      left: new Set([...delimitersLeft, ...surfaceLeft]),
+      right: new Set([...delimitersRight, ...surfaceRight]),
     },
+    terms,
   };
+
+  checkSurfaceDelimiters(spec, surfaceDeclarations, diagnostics);
+
+  return { diagnostics, spec };
 }

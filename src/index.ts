@@ -4,7 +4,14 @@
  * The public API grows stage by stage; see the README for the layer stack.
  */
 
-export type { Diagnostic, Span } from "./diagnostics.js";
+export type { DelimiterRules, DelimiterSet } from "./delimiters.js";
+export {
+  chunkAt,
+  delimiterRules,
+  isReachableChunk,
+  segment,
+} from "./delimiters.js";
+export type { Diagnostic, Severity, Span } from "./diagnostics.js";
 export { boundVariableBinders, stripSyntaxAnnotations } from "./engine.js";
 export type {
   ParseFailure,
@@ -52,7 +59,9 @@ export type {
   TypeRef,
 } from "./reader/statements.js";
 export { parseStatements } from "./reader/statements.js";
-export type { NameRef, Reading, ScanPoint } from "./scan.js";
+export type { Reading, ScanPoint } from "./scan.js";
 export { Scanner } from "./scan.js";
 export type { AppTerm, Fixity, Term, VariableTerm } from "./term.js";
 export { walkTerm } from "./term.js";
+export type { NameRef, Vocabulary } from "./vocabulary.js";
+export { surfaceVocabulary } from "./vocabulary.js";

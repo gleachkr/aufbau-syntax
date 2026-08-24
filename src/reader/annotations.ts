@@ -85,6 +85,18 @@ export type SyntaxAnnotation =
       readonly rule: ElabRule;
     }
   | {
+      /**
+       * Surface delimiters: where a chunk of *student* input ends. Same
+       * shape and same meaning as MM0's own `delimiter` statement, and
+       * unioned with it — but an entry may be any string, not just a single
+       * byte, so `∧` and `<->` can self-delimit where the engine's
+       * byte table cannot hold them.
+       */
+      readonly kind: "delimiter";
+      readonly left: readonly string[];
+      readonly right: readonly string[];
+    }
+  | {
       /** Supplied when an argument of its sort is missing; drops on print. */
       readonly kind: "elided";
     }
@@ -110,6 +122,9 @@ const TEMPLATES: Record<string, string> = {
   syntax_unknown_lint: "unknown lint {name}; known lints: {known}",
   syntax_bad_display:
     "@syntax display wants drop-outer-parens or rotate-brackets <pairs…>",
+  syntax_bad_delimiter:
+    "@syntax delimiter wants: delimiter $ <entries…> $, or delimiter $ <left…> $ $ <right…> $",
+  syntax_empty_delimiter: "a @syntax delimiter math string must list entries",
   syntax_bad_elab:
     "@syntax elab wants: elab $ <pattern> $ => $ <template> $ [input-only]",
   syntax_bad_pattern_element: "cannot read pattern element {element}",
@@ -222,6 +237,19 @@ function parseTemplate(
 
 const ELAB = /^\$(.*?)\$\s*=>\s*\$(.*?)\$\s*(input-only)?\s*$/s;
 
+/** `$ … $`, or `$ left… $ $ right… $` — MM0's own two shapes. */
+const DELIMITER = /^\$([^$]*)\$(?:\s*\$([^$]*)\$)?\s*$/;
+
+/**
+ * Every entry written out, one at a time. There is deliberately no range
+ * shorthand: a spike of `A-Z`-style ranges read `<->` as the range `<`…`>`
+ * and silently turned one delimiter into three. A declaration that decides
+ * how input is cut up is worth its verbosity.
+ */
+function delimiterEntries(text: string): string[] {
+  return text.split(/\s+/).filter((entry) => entry.length > 0);
+}
+
 /**
  * Parse one annotation payload (the text after `--|`). Returns null for a
  * foreign annotation — anything that does not begin `@syntax`.
@@ -258,6 +286,25 @@ export function parseSyntaxAnnotation(
       }
 
       return ok({ kind: "brackets", pairs });
+    }
+
+    case "delimiter": {
+      const match = DELIMITER.exec(rest.slice("delimiter".length).trim());
+
+      if (match === null) {
+        return fail("syntax_bad_delimiter", {}, span);
+      }
+
+      const first = delimiterEntries(match[1] ?? "");
+      const second =
+        match[2] === undefined ? null : delimiterEntries(match[2]);
+
+      if (first.length === 0 || second?.length === 0) {
+        return fail("syntax_empty_delimiter", {}, span);
+      }
+
+      // One list means both sides, as in MM0.
+      return ok({ kind: "delimiter", left: first, right: second ?? first });
     }
 
     case "assoc-none": {

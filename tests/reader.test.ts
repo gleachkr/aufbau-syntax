@@ -339,3 +339,142 @@ describe("spec validation", () => {
     expect([...result.spec.sorts.keys()].sort()).toEqual(["tm", "wff"]);
   });
 });
+
+describe("surface delimiters", () => {
+  /**
+   * Small but complete: an elided term whose name the letters would split
+   * (`snil` against the `s n i l` variable pool), two letters, and operator
+   * spellings of one, two, and three characters.
+   */
+  const BASE = `
+delimiter $ ( ) $;
+provable sort wff;
+--| @vars s n i l
+sort var;
+sort tm;
+sort seq;
+term v2t (x: var): tm;
+coercion v2t: var > tm;
+term t2s (t: tm): seq;
+coercion t2s: tm > seq;
+--| @syntax elided
+term snil: seq;
+term F (s: seq): wff;
+term G (s: seq): wff;
+term not (p: wff): wff;
+prefix not: $~$ prec 40;
+term and (p q: wff): wff;
+infixl and: $/\\$ prec 30;
+infixl and: $∧$ prec 30;
+`;
+
+  /** Everything `BASE` declares, written out one entry at a time. */
+  const FULL = "F G s n i l ( ) ~ /\\ ∧";
+
+  const declaring = (entries: string) =>
+    parseSpec(`--| @syntax delimiter $ ${entries} $\n${BASE}`);
+
+  test("a spec that declares none is read under the theory's own set", () => {
+    const { spec, diagnostics } = parseSpec(BASE);
+
+    expect(diagnostics).toEqual([]);
+    expect([...spec.surfaceDelimiters.left].sort()).toEqual(["(", ")"]);
+    expect([...spec.surfaceDelimiters.right].sort()).toEqual(["(", ")"]);
+  });
+
+  test("a declaration unions with the theory's own delimiters", () => {
+    const { spec, diagnostics } = declaring(FULL);
+
+    expect(diagnostics).toEqual([]);
+
+    // The theory's set is untouched — engine text still reads under it.
+    expect([...spec.delimiters.left].sort()).toEqual(["(", ")"]);
+
+    expect([...spec.surfaceDelimiters.left].sort()).toEqual(
+      ["(", ")", "/\\", "F", "G", "i", "l", "n", "s", "~", "∧"].sort(),
+    );
+  });
+
+  test("a surface delimiter may be a string, where the engine's cannot", () => {
+    // `delimiter $ ∧ $;` is rejected as multibyte — the engine splits on
+    // bytes. The surface set has no such limit.
+    expect(ids(parseSpec("delimiter $ ∧ $;"))).toEqual([
+      "multibyte_delimiter",
+    ]);
+
+    const { spec } = declaring(FULL);
+    expect(spec.surfaceDelimiters.left.has("∧")).toBe(true);
+    expect(spec.surfaceDelimiters.left.has("/\\")).toBe(true);
+  });
+
+  test("the two-list form splits left from right", () => {
+    const { spec, diagnostics } = parseSpec(
+      `--| @syntax delimiter $ F G s n i l ( ~ /\\ ∧ $ $ ) $\n${BASE}`,
+    );
+
+    expect(diagnostics).toEqual([]);
+    expect(spec.surfaceDelimiters.left.has(")")).toBe(true); // from the statement
+    expect(spec.surfaceDelimiters.right.has("~")).toBe(false);
+    expect(spec.surfaceDelimiters.right.has(")")).toBe(true);
+  });
+
+  test("malformed declarations name their problem", () => {
+    expect(ids(parseSpec(`--| @syntax delimiter F G\n${BASE}`))).toEqual([
+      "syntax_bad_delimiter",
+    ]);
+    expect(ids(parseSpec(`--| @syntax delimiter $  $\n${BASE}`))).toEqual([
+      "syntax_empty_delimiter",
+    ]);
+    expect(
+      ids(parseSpec(`--| @syntax delimiter $ F $ $  $\n${BASE}`)),
+    ).toEqual(["syntax_empty_delimiter"]);
+  });
+
+  test("a delimiter that names nothing is an error", () => {
+    // Including a range shorthand written by an author who assumed one
+    // exists: `A-Z` is a three-character delimiter, and nothing else.
+    const result = declaring(`${FULL} FG A-Z`);
+
+    expect(ids(result)).toEqual(["delimiter_unknown", "delimiter_unknown"]);
+    expect(result.diagnostics.map((d) => d.params.token)).toEqual([
+      "FG",
+      "A-Z",
+    ]);
+  });
+
+  test("a token left out of the declaration warns, and only warns", () => {
+    const result = declaring("F G s n i l ( ) /\\ ∧");
+
+    expect(result.diagnostics).toHaveLength(1);
+    expect(result.diagnostics[0]).toMatchObject({
+      id: "delimiter_token_not_delimited",
+      params: { token: "~" },
+      severity: "warning",
+    });
+  });
+
+  test("a name the delimiters would split can never be read", () => {
+    const result = parseSpec(
+      `--| @syntax delimiter $ ${FULL} $\n${BASE}\nterm sn (s: seq): wff;\n`,
+    );
+
+    expect(ids(result)).toEqual(["delimiter_unreachable_name"]);
+    expect(result.diagnostics[0]).toMatchObject({
+      params: { chunks: "s n", name: "sn" },
+      severity: "error",
+    });
+  });
+
+  test("an elided term is exempt: nobody types it", () => {
+    // `snil` splits into `s n i l` under the same declaration, and that is
+    // fine — the parser supplies it and the printer drops it.
+    expect(ids(declaring(FULL))).toEqual([]);
+    expect(declaring(FULL).spec.terms.get("snil")?.elided).toBe(true);
+  });
+
+  test("nothing is checked until a spec opts in", () => {
+    // No declaration, so no claim that input can be written tight — and no
+    // complaint that `~` and `∧` are not delimiters, which they are not.
+    expect(ids(parseSpec(`${BASE}\nterm sn (s: seq): wff;\n`))).toEqual([]);
+  });
+});

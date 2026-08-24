@@ -13,10 +13,19 @@ export interface Span {
   readonly end: number;
 }
 
+/**
+ * `error` means the thing being described does not work. `warning` means it
+ * works but is very likely not what was meant — a spec that only warns is
+ * still usable, and a consumer that ignores the distinction still sees a
+ * message.
+ */
+export type Severity = "error" | "warning";
+
 export interface Diagnostic {
   readonly id: string;
   readonly message: string;
   readonly params: Readonly<Record<string, string>>;
+  readonly severity: Severity;
   readonly span: Span;
 }
 
@@ -40,6 +49,13 @@ export function diagnostic(
   template: string,
   params: Readonly<Record<string, string>>,
   span: Span,
+  severity: Severity = "error",
 ): Diagnostic {
-  return { id, message: fillTemplate(template, params), params, span };
+  return {
+    id,
+    message: fillTemplate(template, params),
+    params,
+    severity,
+    span,
+  };
 }
