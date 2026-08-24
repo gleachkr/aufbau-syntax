@@ -95,6 +95,12 @@ and hands the source text to `parseSpec`. This library's business ends at
 
 ## Development
 
+There is a flake, as in the other Aufbau repositories — `nix develop`, or
+`direnv allow` and let the `.envrc` do it. The shell carries the toolchain CI
+runs with — Bun for the suite, Node 24 for the release scripts and the smoke
+test — so a failure here is a failure there. When a `flake.lock` bump moves
+Bun off the version `.github/workflows/test.yml` pins, move the workflow too.
+
 ```sh
 bun install
 bun run validate   # bun test + tsc --noEmit + biome ci
