@@ -26,7 +26,7 @@ and Node's ESM resolver does not guess.
 
 | trigger | version | dist-tag |
 | --- | --- | --- |
-| push to `main` | `0.0.1-canary.20260823T101500Z.42.g0123456789ab` | `canary` |
+| push to `main` | `0.0.2-canary.20260823T101500Z.42.g0123456789ab` | `canary` |
 | tag `v0.1.0` | `0.1.0` (must match `package.json`) | `latest` |
 
 A tag run calls `test.yml` first and publishes only if it passes; a canary run
@@ -48,16 +48,18 @@ it back.
 
 ## One-time setup on GitHub and npm
 
-The repository is local-only today. Before any of this runs:
+How the mechanism was bootstrapped, kept because the last step is the one
+that is easy to forget:
 
-1. **Create the GitHub repository** and push `main`. The `repository` field in
-   `package.json` says `github.com/gleachkr/aufbau-syntax`; provenance
-   attestation compares it against the repository the workflow runs in, so if
-   the repository is named something else, that field has to change with it.
-2. **Publish `0.0.1` once by hand** — `npm publish --access public` from a
-   clean checkout, with `dist/` freshly built (`prepack` handles it). npm can
-   only attach a trusted publisher to a package that already exists, so the
-   first release bootstraps the mechanism CI then uses.
+1. **Create the GitHub repository** and push `main` — done. The `repository`
+   field in `package.json` says `github.com/gleachkr/aufbau-syntax`;
+   provenance attestation compares it against the repository the workflow
+   runs in, so if the repository is ever renamed, that field moves with it.
+2. **Publish `0.0.1` once by hand** — done, 2026-08-24: `npm publish
+   --access public` from a clean checkout, with `dist/` freshly built
+   (`prepack` handles it). npm can only attach a trusted publisher to a
+   package that already exists, so the first release had to bootstrap the
+   mechanism CI then uses.
 3. **Configure trusted publishing** on npmjs.com: the package's *Settings* →
    *Trusted publisher* → GitHub Actions, repository `gleachkr/aufbau-syntax`,
    workflow `npm-canary.yml`. That is what makes the workflow's
@@ -74,7 +76,7 @@ Same as the engine packages:
 ```sh
 bun add @aufbau/syntax@canary
 # or pin a commit's build exactly
-bun add @aufbau/syntax@0.0.1-canary.20260823T101500Z.42.g0123456789ab
+bun add @aufbau/syntax@0.0.2-canary.20260823T101500Z.42.g0123456789ab
 ```
 
 Carnap-server pins exact versions rather than ranges — a canary is a specific

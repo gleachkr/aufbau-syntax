@@ -60,6 +60,99 @@ The vocabulary is finite — MM0's nature. There is no subscript scheme; a
 book that leans on `x_1` can declare a few such names explicitly (they
 are valid MM0 identifiers).
 
+## `delimiter $ <entries…> $`
+
+```text
+--| @syntax delimiter $ A B C D E F G H I J K L M N O P Q R S T U V W X Y Z $
+--| @syntax delimiter $ a b c d e f g h i j k l m n o p q r s t u v w x y z $
+--| @syntax delimiter $ ( ) [ ] , $
+--| @syntax delimiter $ -> => ⊃ → <-> <=> ≡ ↔ $
+```
+
+Where one chunk of student input ends and the next begins. This is the
+most consequential line in a spec, because segmentation runs *before*
+anything is looked up: the delimiters — not the term table, not the
+notations — decide that `AxF(x)` is `A x F ( x )`. Only once a chunk's
+boundaries are fixed is it classified, as a notation token, as a lexicon
+name, or as both.
+
+The shape and the meaning are MM0's own `delimiter` statement, and the
+entries are **unioned** with it: whatever the file's `delimiter $ … $;`
+declares for the engine stays in force for student input too. Both of
+MM0's forms are accepted — one math string means both sides,
+
+```text
+--| @syntax delimiter $ ( ) , $
+```
+
+and two give the left and the right lists separately:
+
+```text
+--| @syntax delimiter $ ( $ $ ) $
+```
+
+The rule the two sides name is the engine's (`MathCursor.readToken` in
+Aufbau's `src/trusted/parse.zig`): consume, then break **after** a *left*
+delimiter and **before** whitespace or a *right* delimiter. An entry in
+both lists therefore always stands alone as its own chunk, which is what
+the one-list form gives you and what every spec in `specs/` uses. A
+left-only entry closes the chunk it ends but does not break a run that
+arrives at it, and a right-only entry does the reverse. Where two entries
+could match at one position, the longest spelling wins, so `<->` is one
+chunk and not `<`, `-`, `>`.
+
+One generalization beyond MM0: an entry may be **any string**, not a
+single byte. That is the whole reason this annotation exists rather than
+the plain statement — the engine's delimiter table is a `[256]bool`
+indexed by byte, so it cannot hold `∧` (several bytes) or `->` (several
+characters), and it does not need to, since engine math strings are
+whitespace-separated. Student input is not.
+
+### The quiet default
+
+A spec that declares no `@syntax delimiter` is read under the theory's own
+delimiters alone. There, tokens are separated by whitespace and brackets
+and nothing else, so `~~P` is one chunk and does not parse. **Tight
+textbook notation is an explicit opt-in** — a spec never acquires it by
+accident, and adding a notation or a letter never grants it.
+
+### What the reader checks
+
+Only when the spec declares at least one `@syntax delimiter`; without one
+none of this can bite.
+
+- `delimiter_unknown` (error) — an entry that is neither a notation
+  token, a grouping bracket, nor a lexicon name. It would cut input into
+  a piece the parser must then reject: a boundary with nothing behind it.
+- `delimiter_token_not_delimited` (warning) — a notation token that is
+  not itself a delimiter. Advice, not breakage: the token still reads
+  wherever something else bounds it, so with the letters declared `P->Q`
+  is fine even if `->` is not. What it warns about is two such tokens
+  meeting — `->~` is one chunk unless one of them delimits.
+- `delimiter_unreachable_name` (error) — a lexicon name the delimiters
+  split, reported with the pieces. No bracketing recovers it, because
+  segmentation happened before anything knew the name existed. `elided`
+  terms are exempt: they are supplied by the parser and dropped by the
+  printer, never typed.
+
+### What it buys
+
+Boundaries fixed before any lookup are what make **declaring vocabulary
+unable to change how existing input is cut up.** Under the character-level
+maximal munch this replaced, appending `term ab: tm;` to the Magnus spec
+silently turned `Fab` from `F` of `a` and `b` into `F` of the single name
+`ab` — and since the printer spelled the new tree back as `Fab`, every
+round trip stayed clean and nothing downstream could tell. Now a new
+declaration has exactly two ways to go: the name survives segmentation and
+existing input reads exactly as it did, or the delimiters split it and the
+*spec* is refused, at authoring time, naming the pieces. There is no third
+outcome in which a student's formula quietly means something else.
+`tests/monotonicity.test.ts` holds the property to a corpus.
+
+Only widening the delimiter set can move a boundary — which is why the set
+is one visible declaration at the top of the file rather than something
+that accumulates as the vocabulary grows.
+
 ## `elided`
 
 ```text
@@ -87,9 +180,12 @@ be binary and homogeneous (`S × S → S`), must also carry a notation (the
 engine cannot read invisibility — engine mode prints `x , y`), and is
 unique per sort (all validated).
 
-What glues: self-delimiting single-token operands — `@vars` tokens,
-nullary declared names, and nullary notations (an `∅`-style constant) —
-whose sort coerces into the combiner's, consumed greedily. Nested
+What glues: single-chunk operands — `@vars` tokens, nullary declared
+names, and nullary notations (an `∅`-style constant) — whose sort coerces
+into the combiner's, consumed greedily. Glue is not this annotation's to
+grant, though: `Rxy` is three operands only if the delimiters already cut
+it into three chunks. A spec that glues declares its letters (see
+`delimiter` above); one that does not gets `R x y`, spaced. Nested
 juxtaposed applications (`Ffxy`) are deliberately not operands yet:
 under variadic sequences they are ambiguous, and that extension is
 deferred. So is free-standing adjacency (`ab` for `a*b` in a group-theory
@@ -132,7 +228,11 @@ The closed set of refusal conventions:
   position. Only variables of sorts some quantifier binds count; a
   `@vars` constant (Calgary's names) cannot be "free".
 
-`parse(text, { lints: false })` reads text without them.
+`parse(text, { lints: false })` reads text without them — for input that
+is grammatical but not surface-idiomatic. `parse(text, { mode: "engine" })`
+reads this library's own engine-mode output instead: the theory's
+delimiters rather than the surface set, no elaboration, and lints off
+unless asked for.
 
 ## `display <option>`
 

@@ -11,9 +11,9 @@ plus a small set of `@syntax` annotations in
 derives from it the two things MM0's own math parser cannot give a logic
 classroom:
 
-- a **student surface language**: character-level, whitespace-free textbook
-  notation (`∀xF(x)`, `Fxyz`, `~~P`), alias spellings, per-textbook bracket
-  and parenthesization conventions;
+- a **student surface language**: tight, whitespace-free textbook notation
+  (`∀xF(x)`, `Fxyz`, `~~P`), alias spellings, per-textbook bracket and
+  parenthesization conventions;
 - a **display language**: canonical pretty-printing with the textbook's own
   conventions (dropped outer parentheses, juxtaposed arguments, rotated
   brackets).
@@ -31,8 +31,14 @@ One spec file per textbook system; no code per system.
    `@congr`, …) pass through as data — except `@vars`, which is read *and*
    passed through: the engine's variable pools are the surface lexicon's
    variables.
-2. **Scanner** — character-level maximal munch over the declared tokens and
-   lexicon names. No whitespace requirement; glue dissolves here.
+2. **Scanner** — segment, then classify. Chunk boundaries come from the
+   declared delimiter set alone (MM0's own tokenizer rule, generalized so
+   that a delimiter may be any string — `∧`, `<->` — where the engine's
+   byte table holds only single bytes), and *never* from the term or
+   notation tables; only afterwards is a chunk looked up, as a token, as a
+   lexicon name, or as both. Declaring the letters is what dissolves glue,
+   and declaring it is what keeps a later declaration from silently
+   re-reading input that already parsed.
 3. **Elaboration layer** — bidirectional token-pattern rules (`@syntax
    elab`) for textbook sugar that really is local (`(x)Fx` ⇄ `∀xF(x)`,
    `(∀x)` ⇄ `∀x`). Regular by design: one pass per rule, spans threaded
@@ -49,12 +55,15 @@ One spec file per textbook system; no code per system.
 
 ## Status
 
-Pre-release, but the layer stack is complete and tested end to end: three
+Early, but the layer stack is complete and tested end to end: three
 example specs (`forallx-calgary-2019`, `forallx-magnus`, `carnap-prop`),
 a behavioral corpus transcribed from the parsers this library replaces,
-round-trip laws for both print modes, and an acceptance test in which the
-real Aufbau compiler parses this library's engine output and certifies it
-tree-identical to hand-written spellings (`tests/engine-align.test.ts`).
+round-trip laws for both print modes, an acceptance test in which the real
+Aufbau compiler parses this library's engine output and certifies it
+tree-identical to hand-written spellings (`tests/engine-align.test.ts`),
+and a monotonicity suite pinning the property the delimiter design exists
+to buy: declaring vocabulary cannot change how existing input is cut up
+(`tests/monotonicity.test.ts`).
 
 ```ts
 import { parseSpec, printTerm, SurfaceLanguage } from "@aufbau/syntax";

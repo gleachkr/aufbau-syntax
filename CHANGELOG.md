@@ -1,6 +1,48 @@
 # Changelog
 
-## Unreleased
+## 0.0.2 — 2026-08-24
+
+**Breaking: student input is segmented by declared delimiters, not by the
+vocabulary.** 0.0.1 cut input up with character-level maximal munch over
+the declared tokens and lexicon names, which made segmentation depend on
+what the spec happened to contain — so declaring a term could silently
+re-read a string that already parsed. Appending `term ab: tm;` to the
+Magnus spec turned `Fab` from `F` of `a` and `b` into `F` of `ab`, and the
+printer spelled the new tree back as `Fab`, so no round trip could see it.
+Segmentation is now MM0's own tokenizer rule over a delimiter set the spec
+declares, fixed before anything is looked up.
+
+**What a 0.0.1 spec must add.** Tight textbook notation is now an explicit
+opt-in: a spec that declares no `@syntax delimiter` is read under the
+theory's own `delimiter` statement alone, where input is whitespace- and
+bracket-separated, so `~~P` and `AxF(x)` stop parsing. Declare the letters
+and the operator spellings the language glues — the three specs in
+`specs/` show the shape, and `docs/authoring-a-spec.md` covers the choice
+this forces (a spec with letter delimiters has one-character letters; a
+spec without them has multi-character names and spaced adjacency; no spec
+has both).
+
+- `@syntax delimiter` (`docs/syntax-annotations.md`) declares the surface
+  set, in both of MM0's forms, unioned with the file's own `delimiter`
+  statement, and generalized so that an entry may be any string — `∧`,
+  `<->` — where the engine's `[256]bool` table holds only single bytes.
+- Three authoring-time checks: `delimiter_unknown` and
+  `delimiter_unreachable_name` are errors, `delimiter_token_not_delimited`
+  is advice. `Diagnostic` therefore gained a `severity`, and a caller that
+  treated every diagnostic as fatal should now filter on it.
+- A chunk nothing can be classified as is reported whole — the new
+  `unrecognized_chunk` diagnostic — rather than by its first character.
+- The property the rewrite exists to buy is under test
+  (`tests/monotonicity.test.ts`): vocabulary growth either leaves every
+  existing reading identical or is refused at the declaration, never both
+  parses and means something else. One consequence worth knowing: a spec
+  that declares all 52 letters and spends all 52 as lexicon names — as all
+  three examples do — is closed to any further name containing a letter.
+
+Also: a Nix development shell (`nix develop`, or `direnv allow`), carrying
+the toolchain CI runs with.
+
+## 0.0.1 — 2026-08-24
 
 Initial development. The layer stack is complete and tested end to end:
 
@@ -30,18 +72,18 @@ Initial development. The layer stack is complete and tested end to end:
   publishes from `main`, stable publishes from a `v1.2.3` tag, both with npm
   provenance. See `docs/releasing.md`.
 
-Replaced before any release: the original `@syntax family` letter-schema
-mechanism (letter ranges, subscript lexing, template elaboration,
-combiner discovery by shape). The lexicon is now ordinary MM0 — declared
-terms plus the engine's `@vars` pools — with two per-term annotations,
-`elided` and `juxtaposed`, carrying what the declarations cannot say.
-Deliberate casualties: subscripted atoms (`x_1`, `P0`; the vocabulary is
-finite) and one-letter-two-kinds (bare `P` is now the seq-taking
-declaration applied to the elided empty sequence, so trees read
+Replaced before this first release: the original `@syntax family`
+letter-schema mechanism (letter ranges, subscript lexing, template
+elaboration, combiner discovery by shape). The lexicon is now ordinary
+MM0 — declared terms plus the engine's `@vars` pools — with two per-term
+annotations, `elided` and `juxtaposed`, carrying what the declarations
+cannot say. Deliberate casualties: subscripted atoms (`x_1`, `P0`; the
+vocabulary is finite) and one-letter-two-kinds (bare `P` is now the
+seq-taking declaration applied to the elided empty sequence, so trees read
 `P(snil)`).
 
-Also renamed before any release: `@syntax rewrite` is now `@syntax elab`.
-The engine's `@rewrite` marks directed rules over *terms* for proof-search
-normalization, and theories carrying both annotations read badly; this
-layer only ever rewrites tokens, elaborating surface spelling on the way
-in and delaborating on the way out.
+Also renamed before this first release: `@syntax rewrite` is now `@syntax
+elab`. The engine's `@rewrite` marks directed rules over *terms* for
+proof-search normalization, and theories carrying both annotations read
+badly; this layer only ever rewrites tokens, elaborating surface spelling
+on the way in and delaborating on the way out.
