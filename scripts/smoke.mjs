@@ -35,7 +35,9 @@ const display = printTerm(language, result.term, "display");
 assert.equal(display, "∀xF(x) → G(a)");
 
 const engine = printTerm(language, result.term, "engine");
-const reparsed = language.parse(engine, { lints: false });
+// Engine text is read under the *theory's* delimiters, not the surface set:
+// `mode: "engine"` is what keeps `snil` one name instead of four letters.
+const reparsed = language.parse(engine, { mode: "engine" });
 assert.ok(reparsed.ok, "engine output must re-parse");
 assert.equal(printTerm(language, reparsed.term, "display"), display);
 
