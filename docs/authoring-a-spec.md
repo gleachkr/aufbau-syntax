@@ -131,10 +131,11 @@ for its turn: undeclare the letters and spell adjacency out.
    ...
    ```
 
-   Student input is read at the sort marked `--| @syntax role sentence`,
-   or — as here — at the first `provable` sort when nothing is marked. Say
-   it explicitly once a file declares more than one provable sort, which
-   is what a theory does when it states its judgements as `Γ ⊢ φ`.
+   `parse` reads at the first `provable` sort unless the caller names
+   another. One provable sort — as here — and there is nothing to decide.
+   A file with several, which is what a theory that states its judgements
+   as `Γ ⊢ φ` has, is a file whose callers should be passing
+   `{ sort }` explicitly rather than relying on declaration order.
 
 3. **The argument-sequence trick, with elision.** Predicates take one
    `seq`, built by an infix comma, so one predicate letter is variadic —

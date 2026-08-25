@@ -2,20 +2,33 @@
 
 ## Unreleased
 
-**`@syntax role` may sit on a sort, and one sort role is interpreted:
-`sentence`.** `SurfaceLanguage` gained `sentenceSort` — the sort student
-input is read at, which decides the parse target and its coercion, which
-constructors count as connectives, and what `closed-sentences` ranges
-over. It falls back to the first `provable` sort, so every existing spec
-is unaffected; declaring it matters when a file has more than one provable
-sort, which is what a theory does when it states its judgements as
-`Γ ⊢ φ` in a sort of their own. `SortInfo` gained `roles`, symmetric with
-`TermInfo`.
+**The sort input is read at is a `parse` argument.**
+`parse(text, { sort })` names it; the text must parse to that sort or
+coerce into it. The default is unchanged — `provableSort`, the first sort
+the file marks `provable` — so no existing call behaves differently. What
+this is for is a file that declares several provable sorts, which is what
+a merged theory-and-language artifact does when its judgements are
+`Γ ⊢ φ`: the caller knows whether it wants a formula or a sequent, and
+declaration order is not an answer. `term_not_sentence` now carries the
+sort it wanted as well as the sort it got.
 
-`isConnective` also now requires the constructor to *return* the sentence
-sort, not merely to take two of them — a turnstile from two sentences to a
-judgement was previously counted as a connective, and would have been
-spaced and parenthesized as one.
+**`@syntax role` may sit on a sort** (`SortInfo.roles`, symmetric with
+`TermInfo`), and is still **interpreted nowhere**. It is the recommended
+place for an application to record which sort *it* means to read at, so
+that stays in the spec — which is data — instead of hard-coded per
+language id in the caller. The library reading such a role itself was
+considered and rejected: a general-purpose parser should not privilege
+one sort name.
+
+**`isConnective` no longer keys on a distinguished sort.** A connective is
+now an infix constructor *closed over* a `provable` sort — two arguments
+of that sort and a result of the same one. `∧` qualifies; `=` over terms
+does not (its arguments are of another sort); a turnstile from two
+formulas to a judgement does not (it does not return what it takes); the
+argument comma does not (`seq` is not provable). A judgement-level
+conjunction now gets the same spacing and bracketing as a formula-level
+one, which it should. The `parenthesize-binary-only` lint goes through the
+same predicate rather than its own copy of it.
 
 **An elab pattern literal is any chunk, declared or not.** It used to have
 to be a declared notation token, which it enforced by not matching: a rule

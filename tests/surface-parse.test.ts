@@ -481,22 +481,24 @@ describe("Carnap prop: refusals", () => {
   });
 });
 
-describe("the sentence sort", () => {
+describe("the sort input is read at", () => {
   // A theory that keeps its judgements in a provable sort of their own:
-  // `⊢` is what may be asserted, `wff` is what a student may write. The
-  // role says which is which; without it the first provable sort wins and
-  // input would be read at `judgement`.
+  // `⊢` is what may be asserted, a formula is what a student writes. Which
+  // of the two a given call wants is the caller's to say; the library
+  // defaults to the first provable sort and privileges no sort anywhere
+  // else.
   const SEQUENT = `
 delimiter $ ( ) $;
---| @syntax role sentence
 provable sort wff;
 provable sort judgement;
 term P: wff;
 term Q: wff;
 term and (p q: wff): wff;
-infixl and: $/\\\\$ prec 40;
+infixl and: $&$ prec 40;
 term nd (p q: wff): judgement;
 infixl nd: $|-$ prec 10;
+term jand (p q: judgement): judgement;
+infixl jand: $;$ prec 5;
 `;
 
   function language(source: string): SurfaceLanguage {
@@ -507,38 +509,63 @@ infixl nd: $|-$ prec 10;
     return new SurfaceLanguage(spec);
   }
 
-  test("a declared sentence role wins over declaration order", () => {
+  test("the default target is the first provable sort", () => {
     const lang = language(SEQUENT);
 
     expect(lang.provableSort).toBe("wff");
-    expect(lang.sentenceSort).toBe("wff");
+    expect(lang.parse("P & Q").ok).toBe(true);
+    // A sequent is not a wff and does not coerce into one.
+    expect(lang.parse("P |- Q").ok).toBe(false);
+  });
+
+  test("a caller names the sort it wants", () => {
+    const lang = language(SEQUENT);
+    const sequent = lang.parse("P |- Q", { sort: "judgement" });
+
+    expect(sequent.ok).toBe(true);
+
+    if (sequent.ok) {
+      expect(sexpr(sequent.term, new Set())).toBe("(nd P Q)");
+    }
+
+    // And the refusal names what it got, at whichever sort was asked for.
+    const wrong = lang.parse("P & Q", { sort: "judgement" });
+
+    expect(wrong.ok).toBe(false);
+
+    if (!wrong.ok) {
+      expect(wrong.diagnostics[0]?.id).toBe("term_not_sentence");
+    }
+  });
+
+  test("connectives are closed over a provable sort, whichever it is", () => {
+    const lang = language(SEQUENT);
+
+    // Closed over wff, and closed over judgement: both are connectives.
     expect(lang.isConnective("and")).toBe(true);
+    expect(lang.isConnective("jand")).toBe(true);
+    // The turnstile takes two formulas and returns a judgement, so it is
+    // not closed over either — a connective is not merely binary infix.
     expect(lang.isConnective("nd")).toBe(false);
   });
 
-  test("student input is read at the sentence sort, not the judgement", () => {
-    const lang = language(SEQUENT.replace("--| @syntax role sentence\n", ""));
+  test("a sort that is not provable is not connective territory", async () => {
+    const { language } = await calgaryReady;
 
-    // Without the role, "first provable sort found" is the only rule, and
-    // this file declares `wff` first — so the two agree here. What the
-    // role buys is that they keep agreeing when the order changes.
-    expect(lang.sentenceSort).toBe("wff");
-
-    const flipped = language(
-      SEQUENT.replace("provable sort judgement;", "").replace(
-        "--| @syntax role sentence\nprovable sort wff;",
-        "provable sort judgement;\nprovable sort wff;",
-      ),
-    );
-
-    expect(flipped.sentenceSort).toBe("judgement");
-    expect(flipped.isConnective("and")).toBe(false);
+    // The argument comma is binary infix and homogeneous, but `seq` is not
+    // provable — which is what keeps `R(a,b)` from printing `R((a , b))`.
+    expect(language.isConnective("scomma")).toBe(false);
+    expect(language.isConnective("and")).toBe(true);
+    // Identity returns a wff but takes terms: not closed, so set tight.
+    expect(language.isConnective("ideq")).toBe(false);
   });
 
-  test("no role and no provable sort leaves the target open", () => {
+  test("no provable sort at all leaves the default target open", () => {
     const lang = language("sort tm;\nterm a: tm;");
 
-    expect(lang.sentenceSort).toBe(null);
+    expect(lang.provableSort).toBe(null);
     expect(lang.parse("a").ok).toBe(true);
+    // Naming the sort still works, and still refuses what does not fit.
+    expect(lang.parse("a", { sort: "tm" }).ok).toBe(true);
   });
 });

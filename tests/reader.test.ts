@@ -306,7 +306,7 @@ describe("spec validation", () => {
     expect(ids(onAxiom)).toEqual(["role_target"]);
   });
 
-  test("a role sits on a sort as readily as on a term", () => {
+  test("a role sits on a sort as readily as on a term, uninterpreted", () => {
     const { spec, diagnostics } = parseSpec(
       "--| @syntax role sentence\nsort wff;\n--| @syntax role falsum\nterm bot: wff;",
     );

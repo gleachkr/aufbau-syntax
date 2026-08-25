@@ -138,15 +138,13 @@ export class SurfaceLanguage {
   readonly elidedOf = new Map<string, TermInfo>();
   /** Sorts some quantifier binds — whose variables *can* be captured. */
   readonly bindableSorts = new Set<string>();
-  readonly provableSort: string | null;
   /**
-   * The sort student input is read at: the one carrying `@syntax role
-   * sentence`, falling back to the first `provable` sort when no spec says
-   * otherwise. The two came apart once a theory kept its judgements in a
-   * provable sort of their own — `Γ ⊢ φ` is assertable, a sentence is what
-   * a student may write, and only the spec knows which is which.
+   * The first sort the file marks `provable` — MM0's own way of saying
+   * "assertable". It is `parse`'s default target sort and nothing else; a
+   * caller that wants another sort names it, and a file with several
+   * provable sorts is expected to.
    */
-  readonly sentenceSort: string | null;
+  readonly provableSort: string | null;
   /** Per term, its last-declared notation — the canonical spelling. */
   readonly canonical = new Map<string, NotationInfo>();
   readonly coercionNames = new Set<string>();
@@ -268,28 +266,30 @@ export class SurfaceLanguage {
       [...spec.sorts.values()].find((sort) =>
         sort.modifiers.includes("provable"),
       )?.name ?? null;
-
-    this.sentenceSort =
-      [...spec.sorts.values()].find((sort) => sort.roles.includes("sentence"))
-        ?.name ?? this.provableSort;
   }
 
   /**
-   * A sentential connective: an infix constructor making a sentence out of
-   * two sentences. This is the class forallx's bracket convention and the
-   * display printer's spacing both key on — `∧` is one, `=` over terms is
-   * not, and neither is a turnstile that takes two sentences to a
-   * judgement.
+   * A connective: an infix constructor closed over a `provable` sort —
+   * two arguments of that sort, and a result of the same one. This is the
+   * class forallx's bracket convention and the display printer's spacing
+   * both key on: `∧` is one; `=` over terms is not (its arguments are of
+   * another sort); a turnstile from two formulas to a judgement is not
+   * (it does not return what it takes); and the argument comma is not
+   * (`seq` is not provable), which is what keeps `R(a,b)` from printing
+   * as `R((a , b))`.
+   *
+   * Nothing here privileges one sort. A theory that states judgements in
+   * a provable sort of their own gets a judgement-level conjunction
+   * spaced and bracketed on the same terms as a formula-level one, which
+   * is right.
    */
   isConnective(term: string): boolean {
     const info = this.spec.terms.get(term);
-    const sentence = this.sentenceSort;
     const notation = this.canonical.get(term);
 
     return (
-      sentence !== null &&
       info !== undefined &&
-      info.returnSort === sentence &&
+      this.isProvableSort(info.returnSort) &&
       notation !== undefined &&
       notation.form === "simple" &&
       notation.fixity !== "prefix" &&
@@ -298,9 +298,14 @@ export class SurfaceLanguage {
         (binder) =>
           !binder.binds &&
           "sort" in binder.type &&
-          binder.type.sort === sentence,
+          binder.type.sort === info.returnSort,
       )
     );
+  }
+
+  /** Whether the sort carries MM0's `provable` modifier. */
+  isProvableSort(sort: string): boolean {
+    return this.spec.sorts.get(sort)?.modifiers.includes("provable") === true;
   }
 
   /** The coercion path from one sort to another; unique per mm0.md. */
@@ -358,9 +363,18 @@ export class SurfaceLanguage {
   }
 
   /**
-   * Parse surface text. `lints: false` skips the spec's refusal
-   * conventions (bracket discipline, chain refusal, closed sentences) —
-   * for reading text that is grammatical but not surface-idiomatic.
+   * Parse surface text. `sort` is what the result is read at: the text
+   * must parse to that sort, or coerce into it, or it is refused. It
+   * defaults to `provableSort` — the first sort the file marks `provable`,
+   * MM0's own way of saying "assertable" — which is the whole story for a
+   * spec with one such sort. A file with several (a theory whose
+   * judgements are `Γ ⊢ φ` in a sort of their own) has a genuine choice to
+   * make per call, and the caller is who knows: a translation exercise
+   * reads at the formula sort, a proof widget at the judgement sort.
+   *
+   * `lints: false` skips the spec's refusal conventions (bracket
+   * discipline, chain refusal, closed sentences) — for reading text that
+   * is grammatical but not surface-idiomatic.
    *
    * `mode: "engine"` reads this library's own engine-mode output instead:
    * the theory's delimiters rather than the surface set, no elaboration,
@@ -371,17 +385,22 @@ export class SurfaceLanguage {
    */
   parse(
     text: string,
-    options: { readonly lints?: boolean; readonly mode?: ParseMode } = {},
+    options: {
+      readonly lints?: boolean;
+      readonly mode?: ParseMode;
+      readonly sort?: string;
+    } = {},
   ): ParseResult {
     const mode = options.mode ?? "surface";
     const lints = options.lints ?? mode === "surface";
+    const sort = options.sort ?? this.provableSort;
 
     if (mode === "engine") {
-      return new Parse(this, this.engineScanner, text, lints).run();
+      return new Parse(this, this.engineScanner, text, lints, sort).run();
     }
 
     if (this.spec.elabRules.length === 0) {
-      return new Parse(this, this.scanner, text, lints).run();
+      return new Parse(this, this.scanner, text, lints, sort).run();
     }
 
     // Elaborate first, then map every span in the outcome back through
@@ -392,6 +411,7 @@ export class SurfaceLanguage {
       this.scanner,
       elaborated.text,
       lints,
+      sort,
     ).run();
     const diagnostics = result.diagnostics.map((diag) => ({
       ...diag,
@@ -432,6 +452,8 @@ class Parse {
     private readonly scanner: Scanner,
     private readonly text: string,
     private readonly lintsEnabled: boolean,
+    /** The sort the result is read at; null leaves the target open. */
+    private readonly sort: string | null,
   ) {}
 
   run(): ParseResult {
@@ -483,13 +505,17 @@ class Parse {
     }
 
     let term = parsed;
-    const sentence = this.lang.sentenceSort;
+    const target = this.sort;
 
-    if (sentence !== null && term.sort !== sentence) {
-      const wrapped = this.coerceTerm(term, sentence);
+    if (target !== null && term.sort !== target) {
+      const wrapped = this.coerceTerm(term, target);
 
       if (wrapped === null) {
-        this.report("term_not_sentence", { actual: term.sort }, term.span);
+        this.report(
+          "term_not_sentence",
+          { actual: term.sort, expected: target },
+          term.span,
+        );
         return { ok: false, diagnostics: this.diagnostics };
       }
 
@@ -1276,7 +1302,6 @@ class Parse {
   private lint(term: Term): void {
     const lints = this.lang.spec.lints;
     const assocNone = this.lang.spec.assocNone;
-    const sentence = this.lang.sentenceSort;
 
     walkTerm(term, (node, bound) => {
       if (node.kind === "variable") {
@@ -1319,15 +1344,12 @@ class Parse {
       }
 
       if (lints.includes("parenthesize-binary-only") && node.grouped) {
-        const info = this.lang.spec.terms.get(node.term);
-        const binderSorts = info?.binders.map(binderSort);
+        // The same class the printer brackets — see `isConnective`, which
+        // this reads through the parse's own fixity rather than the
+        // canonical notation's.
         const connective =
           (node.fixity === "infixl" || node.fixity === "infixr") &&
-          sentence !== null &&
-          info?.returnSort === sentence &&
-          binderSorts !== undefined &&
-          binderSorts.length === 2 &&
-          binderSorts.every((sort) => sort === sentence);
+          this.lang.isConnective(node.term);
 
         if (!connective) {
           this.report(

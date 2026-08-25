@@ -50,8 +50,8 @@ term f (s: seq): tm;
   and the **last declared is canonical** — it is what the printer writes.
   Put the ASCII forms first and the display glyph last.
 - **Spacing** is derived: the display printer spaces sentential
-  connectives (infix over the sentence sort: `P ∧ Q`) and sets everything
-  else tight (`¬P`, `∀x`, `a=b`, `R(a,b)`).
+  connectives (infix closed over a `provable` sort: `P ∧ Q`) and sets
+  everything else tight (`¬P`, `∀x`, `a=b`, `R(a,b)`).
 - **Display parenthesization** is derived: connective compounds are always
   parenthesized (the textbook full-paren convention), everything else
   bare; see `display drop-outer-parens` for the outermost pair.
@@ -234,6 +234,17 @@ reads this library's own engine-mode output instead: the theory's
 delimiters rather than the surface set, no elaboration, and lints off
 unless asked for.
 
+`parse(text, { sort })` names the sort the result is read at: the text
+must parse to that sort or coerce into it, or it is refused
+(`term_not_sentence`, which carries both the sort it got and the one it
+wanted). The default is `provableSort` — the first sort the file marks
+`provable`, MM0's own way of saying "assertable" — which is the whole
+story for a file with one such sort. A file with several has a real
+choice to make, and the caller is who knows: from one merged
+theory-and-language artifact, a translation exercise reads at the formula
+sort and a proof widget at the judgement sort. The library privileges
+neither; see `role` below for keeping the choice in the spec.
+
 ## `display <option>`
 
 - `drop-outer-parens` — remove the one redundant pair the full-paren
@@ -327,30 +338,33 @@ when printing.
 term imp (p q: wff): wff;
 ```
 
-Passthrough metadata naming what a constructor *means* to a consumer — a
+Passthrough metadata naming what a declaration *means* to a consumer — a
 truth-table evaluator looks for `conjunction`, a model checker for
-`forall`. The library records roles on `TermInfo` and interprets none of
-them. Lexicon letters need no roles: a predicate *is* a term returning
-the sentence sort, a function one returning a term sort — derivable from
+`forall`. The library records roles and **interprets none of them**.
+Lexicon letters need no roles: a predicate *is* a term returning a
+provable sort, a function one returning a term sort — derivable from
 shape.
 
-A role may also sit on a **sort**, where it is recorded on `SortInfo`:
+A role may sit on a **sort** as readily as on a term, recorded the same
+way, on `SortInfo.roles`:
 
 ```text
 --| @syntax role sentence
 sort wff;
 ```
 
-Of these the library interprets exactly one — `sentence`, because parsing
-must have a target sort. `SurfaceLanguage.sentenceSort` is the sort so
-marked, and it decides three things: what student input is read at (and
-coerced to, hence which terms are refused as `term_not_sentence`), which
-constructors count as connectives for forallx's bracket convention and the
-printer's spacing, and what the `closed-sentences` lint ranges over.
+Still uninterpreted here — but this is the shape to reach for when an
+application has to pick a sort out of a file that declares several. The
+sort student input is read at is a `parse` argument, not a property of
+the spec (see below); a consumer that would rather not hard-code `"wff"`
+against a language id can read it off the spec instead:
 
-Without the annotation `sentenceSort` falls back to the first sort
-carrying MM0's `provable` modifier, which is what every spec here relies
-on. Declaring it matters when a file has **more than one** provable sort:
-a theory that states its judgements as `Γ ⊢ φ` in a sort of their own is
-saying two different things are assertable, and only the spec knows which
-of them a student may be asked to write.
+```ts
+const sentence = [...spec.sorts.values()].find((s) =>
+  s.roles.includes("sentence"),
+)?.name;
+language.parse(text, { sort: sentence ?? undefined });
+```
+
+That keeps the choice where it belongs — in the spec, which is data —
+without the library privileging one sort name.
