@@ -212,3 +212,140 @@ prefix ex: $∃$ prec 50;
     }
   });
 });
+
+describe("a pattern literal is any chunk, declared or not", () => {
+  /**
+   * The forallx Calgary situation that motivated this (#241): `A` and `E`
+   * are predicate letters *and* the ASCII quantifier spellings. The shipped
+   * spec gets away with declaring both because a chunk may carry two
+   * readings; a merged theory-and-language file cannot, since MM0 gives a
+   * math token one meaning and the *term* `A` has to stay writable. So the
+   * quantifier spellings come off, and elab puts them back — with `A` now
+   * a name and not a token, which is exactly what the old literal guard
+   * refused to match.
+   */
+  const calgaryReady = readFile(
+    new URL("../specs/forallx-calgary-2019.mm0", import.meta.url).pathname,
+    "utf8",
+  );
+
+  async function merged(): Promise<SurfaceLanguage> {
+    const source = (await calgaryReady)
+      .replace("prefix all: $A$ prec 40;\n", "")
+      .replace("prefix ex: $E$ prec 40;\n", "");
+    const { spec, diagnostics } = parseSpec(
+      [
+        "--| @syntax elab $ A ?x:var $ => $ ∀ ?x $ input-only",
+        "--| @syntax elab $ E ?x:var $ => $ ∃ ?x $ input-only",
+        source,
+      ].join("\n"),
+    );
+
+    expect(diagnostics).toEqual([]);
+
+    return new SurfaceLanguage(spec);
+  }
+
+  async function shipped(): Promise<SurfaceLanguage> {
+    const { spec, diagnostics } = parseSpec(await calgaryReady);
+
+    expect(diagnostics).toEqual([]);
+
+    return new SurfaceLanguage(spec);
+  }
+
+  test("an undeclared literal reads the same input the notation did", async () => {
+    const before = await shipped();
+    const after = await merged();
+
+    for (const source of [
+      "AxF(x)",
+      "AxA(x)",
+      "ExE(x)",
+      "AxEyR(x,y)",
+      "AxAyR(x,y)",
+      "AxA(x) -> A",
+      "Ax(F(x) -> A)",
+    ]) {
+      const one = before.parse(source);
+      const two = after.parse(source);
+
+      expect(one.ok, source).toBe(true);
+      expect(
+        two.ok,
+        `${source}: ${two.ok ? "" : two.diagnostics[0]?.message}`,
+      ).toBe(true);
+
+      if (one.ok && two.ok) {
+        expect(sexpr(two.term), source).toBe(sexpr(one.term));
+      }
+    }
+  });
+
+  test("the letters keep their other reading where no rule fires", async () => {
+    const after = await merged();
+
+    // `A` with no variable after it is the sentence letter, untouched.
+    expect(after.parse("A").ok).toBe(true);
+    expect(after.parse("A -> E").ok).toBe(true);
+    // A name is not a variable, so the capture declines and `A` stays a
+    // predicate — which then wants an argument list.
+    expect(after.parse("Aa").ok).toBe(false);
+  });
+
+  test("the same rule against the shipped spec is unaffected", async () => {
+    // The literal `A` has a token reading there as well as a name reading;
+    // dropping the guard did not change which of them a literal wants.
+    const before = await shipped();
+
+    expect(before.parse("AxF(x)").ok).toBe(true);
+  });
+});
+
+describe("elab literals are validated at read time", () => {
+  const BASE = `
+--| @syntax delimiter $ ( ) x y ∀ $
+delimiter $ ( ) $;
+provable sort wff;
+--| @vars x y
+sort var;
+term F (x: var): wff;
+term all {x: var} (p: wff x): wff;
+prefix all: $∀$ prec 50;
+`;
+
+  function ids(rules: string): string[] {
+    return parseSpec(`${rules}\n${BASE}`).diagnostics.map((d) => d.id);
+  }
+
+  test("a literal the delimiters split is reported, not left dead", () => {
+    // `x` delimits, so `Ax` is two chunks and no input can ever present it
+    // whole. The author wants `$ A x ?y:var $`.
+    expect(
+      ids("--| @syntax elab $ Ax ?y:var $ => $ ∀ ?y $ input-only"),
+    ).toEqual(["elab_literal_split"]);
+    // One chunk, undeclared, is fine — that is the point of the change.
+    expect(
+      ids("--| @syntax elab $ A ?y:var $ => $ ∀ ?y $ input-only"),
+    ).toEqual([]);
+  });
+
+  test("a mis-spaced capture is named as such", () => {
+    // `parsePattern` splits on whitespace, so this is one literal — which
+    // is also why the template's `?x` then references nothing.
+    expect(
+      ids("--| @syntax elab $ (?x:var) $ => $ ∀ ?x $ input-only"),
+    ).toEqual(["elab_unknown_reference", "elab_literal_looks_like_capture"]);
+  });
+
+  test("an invertible rule's template literals are checked too", () => {
+    // Delaboration runs the rule inverted, where the template's literals
+    // are the pattern — a split one there is a dead printer convention.
+    expect(ids("--| @syntax elab $ ( ?x:var ) $ => $ Ax ?x $")).toEqual([
+      "elab_literal_split",
+    ]);
+    expect(
+      ids("--| @syntax elab $ ( ?x:var ) $ => $ Ax ?x $ input-only"),
+    ).toEqual([]);
+  });
+});

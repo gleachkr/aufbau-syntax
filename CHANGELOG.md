@@ -17,6 +17,28 @@ sort, not merely to take two of them — a turnstile from two sentences to a
 judgement was previously counted as a connective, and would have been
 spaced and parenthesized as one.
 
+**An elab pattern literal is any chunk, declared or not.** It used to have
+to be a declared notation token, which it enforced by not matching: a rule
+whose literal was a lexicon name read clean and quietly did nothing. The
+guard was also only half-applied (template literals were never checked)
+and it was not what held chunk anchoring — the delimiters do that. So it
+is gone. This is what lets a merged theory-and-language file spell a
+quantifier `A` while `A` is also a predicate letter: MM0 gives a math
+token one meaning, so the notation has to go, and elab puts the spelling
+back.
+
+Two read-time diagnostics take its place, both aimed at rules that would
+otherwise be silently dead: `elab_literal_split` for a literal the surface
+delimiters cut in two (write it as separate elements), and
+`elab_literal_looks_like_capture` for a literal containing `?`, which is a
+mis-spaced capture — patterns split on whitespace, so `$ (?x:var) $` is
+one literal. Template literals are checked as well for any rule that is
+not `input-only`, since delaboration matches them.
+
+`docs/syntax-annotations.md` now also states the three commitments the
+layer makes — leftmost, greedy, one sweep per rule — and the shape of rule
+to prefer, since a rule can eat a span that had another reading.
+
 ## 0.0.2 — 2026-08-24
 
 **Breaking: student input is segmented by declared delimiters, not by the

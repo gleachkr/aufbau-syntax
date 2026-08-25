@@ -73,8 +73,9 @@ the rule of thumb:
 > Anything the parser reads must be delimiter-bounded; anything only the
 > printer writes need not be.
 
-Operands, notation tokens, grouping brackets and elab template literals
-are read, so they must be bounded. The elided unit is not.
+Operands, notation tokens, grouping brackets and elab literals — pattern
+and template alike, since delaboration matches the template — are read, so
+they must be bounded. The elided unit is not.
 
 ### A letter lexicon closes itself
 
@@ -194,6 +195,21 @@ at once ∀ and a predicate) parses fine — the surface parser backtracks —
 but inside the *engine's* math strings the notation owns the token, so
 formulas using that letter as an atom cannot round-trip through the
 engine while the ASCII alias notation is in the engine-facing theory.
+
+When the language and the theory are one file, that stops being a caution
+and becomes a choice: keep `prefix all: $A$` and the *term* `A` is
+unwritable in the theory's own axioms. Drop the notation and give the
+spelling to elab instead:
+
+```mm0
+--| @syntax elab $ A ?x:var $ => $ ∀ ?x $ input-only
+```
+
+An elab literal need not be declared vocabulary, so `A` may stay a plain
+predicate letter. Read the commitments in `syntax-annotations.md` before
+reaching for this: it is a rule that eats `A` followed by a variable
+before the parser sees either, which is safe in Calgary only because a
+predicate there must take parentheses, so `Ax` has no competing reading.
 
 ## Testing a spec
 

@@ -265,10 +265,53 @@ A capture's class is a **sort**: it matches any single lexicon name — a
 regular, and nesting facts (bracket matching, precedence) belong to the
 parser.
 
+A literal is **any single chunk**, with no requirement that it appear in
+the spec's vocabulary. That is the point of the layer: it exists to accept
+surface forms the MM0 grammar rejects, and the Quine rule above already
+makes `(x)` mean something no declaration mentions — so constraining the
+pieces while the whole is unconstrained would buy nothing. The one
+requirement is *single chunk*: matching compares a literal against the
+chunk at the scan point, and the surface delimiters fixed that chunk's
+boundaries before anything was looked up. A literal the delimiters would
+split is reported at read time (`elab_literal_split`) rather than left to
+match nothing; write it as separate elements, as the rules here already
+write `$ ( ?x:var ) $`. A literal containing `?` is reported too
+(`elab_literal_looks_like_capture`) — a capture is its own element, and
+the pattern is split on whitespace, so `$ (?x:var) $` is one literal and
+never what was meant.
+
+**A consequence worth stating.** Once literals need not be declared, the
+spec's declarations are no longer the complete account of what a student
+may type: whatever an elab literal absorbs is gone before the parser runs.
+Tooling that enumerates a language's surface vocabulary — a symbol
+palette, an "expected one of…" message — must read `spec.elabRules` as
+well as the notations and the lexicon.
+
 Forward, each rule makes **one left-to-right pass** in declaration order,
 resuming after each replacement — no fixpoints, termination by
 construction. An origin map carries every offset back to the source, so
 diagnostics and term spans point at what the writer typed.
+
+**What that commits you to.** Three properties, none of which the parser
+has — the parser backtracks over ambiguity, but only over what reaches it,
+and this layer decides what does:
+
+- *Leftmost* — the first match at the earliest scan point wins, and the
+  span it consumed is replaced and never re-examined.
+- *Greedy* — a `+` capture takes the maximum it can, and never gives one
+  back so that the rest of the pattern can match.
+- *One sweep per rule*, in declaration order — a later rule sees what
+  earlier rules emitted, never the reverse.
+
+So a rule can eat a span that had another reading. Prefer patterns
+**anchored by a leading literal**, a spelling you chose, over
+capture-initial ones, which fire wherever the sorts line up. Anchoring
+lowers the odds; it does not prove the span had no other parse, and
+nothing at read time can. The dialect where it genuinely breaks is one
+with **both letter-spelled quantifiers and juxtaposed predication**, where
+`Ax` really is both `∀x` and A-applied-to-x: there juxtaposition has to be
+a parser behavior (`@syntax juxtaposed`), as it is for Magnus. Calgary has
+the first and not the second, Magnus the second and not the first.
 
 Backward — delaboration — the invertible rules run over display output in
 reverse order: template as pattern, pattern as replacement. A linear rule

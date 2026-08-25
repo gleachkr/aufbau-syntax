@@ -2,7 +2,7 @@
  * The bidirectional token-elaboration layer — `@syntax elab` rules.
  *
  * Forward (elaboration, before the parser): each rule makes one
- * left-to-right pass over the text, matching at token boundaries only.
+ * left-to-right pass over the text, matching at chunk boundaries only.
  * Where a rule matches, its template is spliced in — literals in their own
  * spelling, captures copied from the source — separated by spaces so the
  * result re-scans cleanly. No fixpoints: matching resumes *after* each
@@ -18,8 +18,29 @@
  * the display convention that writes `∀x` as `(x)`.
  *
  * Captures match single lexicon names — a `@vars` token or a nullary
- * declared term — whose sort coerces into the capture's named sort. The
- * layer is deliberately regular — nesting facts belong to the parser.
+ * declared term — whose sort coerces into the capture's named sort. A
+ * literal matches a whole chunk, which need not be declared vocabulary at
+ * all: the layer exists to accept surface forms the MM0 grammar rejects.
+ * It is deliberately regular — nesting facts belong to the parser.
+ *
+ * **The three commitments.** What an author has to reason about is that
+ * this layer decides, and the parser then inherits the decision as fact —
+ * the parser backtracks over ambiguity, but only over what reaches it.
+ *
+ *   - *Leftmost*: the first match at the earliest scan point wins, and the
+ *     span it consumed is replaced and never re-examined.
+ *   - *Greedy*: a `+` capture takes the maximum it can and never gives one
+ *     back to let the rest of the pattern match.
+ *   - *One sweep per rule*, in declaration order, so a later rule sees
+ *     what earlier rules emitted, and never the other way round.
+ *
+ * The hazard those three add up to: a rule may eat a span that had another
+ * reading. Prefer patterns anchored by a leading literal — a spelling the
+ * author chose — over capture-initial ones, which fire wherever the sorts
+ * line up. The dialect where even that is not enough is one with both
+ * letter-spelled quantifiers and juxtaposed predication, where `Ax` is
+ * genuinely both `∀x` and A-applied-to-x; there, juxtaposition has to be a
+ * parser behavior (`@syntax juxtaposed`), as it is for Magnus.
  */
 
 import type { SurfaceLanguage } from "./parse.js";
@@ -114,15 +135,18 @@ function matchRule(
   for (const element of pattern) {
     if (element.kind === "literal") {
       const point = lang.scanner.at(text, at);
-      const reading = point.readings.find(
-        (r) => r.kind === "token" && r.token === element.token,
-      );
 
-      if (reading === undefined) {
+      // A literal matches the *chunk*, declared vocabulary or not. Elab
+      // exists to accept surface forms the MM0 grammar rejects — the Quine
+      // rule makes `(x)` mean something no declaration mentions — so
+      // constraining its pieces to declared tokens would be a half-measure
+      // with nothing behind it. Anchoring is unaffected: the chunk's
+      // boundaries were fixed by the delimiters before any lookup.
+      if (point.chunk !== element.token) {
         return null;
       }
 
-      at = point.start + reading.length;
+      at = point.start + point.chunk.length;
       continue;
     }
 

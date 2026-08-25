@@ -147,6 +147,10 @@ const TEMPLATES: Record<string, string> = {
     "the template references {name}, which the pattern does not capture",
   elab_not_invertible:
     "capture {name} is not used exactly once in the template; mark the rule input-only if that is intended",
+  elab_literal_split:
+    "the literal {literal} is not one chunk — the delimiters read it as {chunks}; write those as separate elements",
+  elab_literal_looks_like_capture:
+    "the literal {literal} contains ?; a capture is its own element, so write it with spaces around it",
   juxtaposed_target:
     "@syntax juxtaposed must sit on a binary term whose arguments and result share one sort",
   juxtaposed_needs_notation:
@@ -311,6 +315,63 @@ function checkSurfaceDelimiters(
       { chunks: segment(name, rules).join(" "), name },
       span ?? fallback,
     );
+  }
+}
+
+/**
+ * Elab literals against the delimiters that will cut up the text they have
+ * to match. A literal need not be declared vocabulary — that is the point
+ * of the layer — but it is matched one chunk at a time, so a literal the
+ * delimiters split can never match anything, and a rule that quietly does
+ * nothing is the failure this reader exists to prevent.
+ *
+ * Template literals are checked too, for every rule that is not
+ * `input-only`: delaboration runs the rule inverted, where the template's
+ * literals *are* the pattern.
+ */
+function checkElabLiterals(spec: Spec, diagnostics: Diagnostic[]): void {
+  const rules = delimiterRules(spec.surfaceDelimiters);
+
+  const check = (token: string, span: Span): void => {
+    // `parsePattern` splits on whitespace, so `(?x:var)` arrives as one
+    // literal rather than three elements. It would trip the split check
+    // below as well, but this names the actual mistake.
+    if (token.includes("?")) {
+      report(
+        diagnostics,
+        "elab_literal_looks_like_capture",
+        { literal: token },
+        span,
+      );
+      return;
+    }
+
+    if (!isReachableChunk(token, rules)) {
+      report(
+        diagnostics,
+        "elab_literal_split",
+        { chunks: segment(token, rules).join(" "), literal: token },
+        span,
+      );
+    }
+  };
+
+  for (const rule of spec.elabRules) {
+    for (const element of rule.pattern) {
+      if (element.kind === "literal") {
+        check(element.token, rule.span);
+      }
+    }
+
+    if (rule.inputOnly) {
+      continue;
+    }
+
+    for (const element of rule.template) {
+      if (element.kind === "literal") {
+        check(element.token, rule.span);
+      }
+    }
   }
 }
 
@@ -869,6 +930,7 @@ export function parseSpec(source: string): SpecParse {
   };
 
   checkSurfaceDelimiters(spec, surfaceDeclarations, diagnostics);
+  checkElabLiterals(spec, diagnostics);
 
   return { diagnostics, spec };
 }
