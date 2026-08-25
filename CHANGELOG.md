@@ -1,6 +1,6 @@
 # Changelog
 
-## Unreleased
+## 0.0.3
 
 **The sort input is read at is a `parse` argument.**
 `parse(text, { sort })` names it; the text must parse to that sort or
