@@ -130,6 +130,11 @@ for its turn: undeclare the letters and spell adjacency out.
    ...
    ```
 
+   Student input is read at the sort marked `--| @syntax role sentence`,
+   or — as here — at the first `provable` sort when nothing is marked. Say
+   it explicitly once a file declares more than one provable sort, which
+   is what a theory does when it states its judgements as `Γ ⊢ φ`.
+
 3. **The argument-sequence trick, with elision.** Predicates take one
    `seq`, built by an infix comma, so one predicate letter is variadic —
    `F(a)` and `R(a,b,c)` share a shape. Mark the empty sequence `elided`

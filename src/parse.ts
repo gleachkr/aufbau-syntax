@@ -139,6 +139,14 @@ export class SurfaceLanguage {
   /** Sorts some quantifier binds — whose variables *can* be captured. */
   readonly bindableSorts = new Set<string>();
   readonly provableSort: string | null;
+  /**
+   * The sort student input is read at: the one carrying `@syntax role
+   * sentence`, falling back to the first `provable` sort when no spec says
+   * otherwise. The two came apart once a theory kept its judgements in a
+   * provable sort of their own — `Γ ⊢ φ` is assertable, a sentence is what
+   * a student may write, and only the spec knows which is which.
+   */
+  readonly sentenceSort: string | null;
   /** Per term, its last-declared notation — the canonical spelling. */
   readonly canonical = new Map<string, NotationInfo>();
   readonly coercionNames = new Set<string>();
@@ -260,22 +268,28 @@ export class SurfaceLanguage {
       [...spec.sorts.values()].find((sort) =>
         sort.modifiers.includes("provable"),
       )?.name ?? null;
+
+    this.sentenceSort =
+      [...spec.sorts.values()].find((sort) => sort.roles.includes("sentence"))
+        ?.name ?? this.provableSort;
   }
 
   /**
-   * A sentential connective: an infix constructor joining two things of
-   * the provable sort. This is the class forallx's bracket convention and
-   * the display printer's spacing both key on — `∧` is one, `=` over
-   * terms is not.
+   * A sentential connective: an infix constructor making a sentence out of
+   * two sentences. This is the class forallx's bracket convention and the
+   * display printer's spacing both key on — `∧` is one, `=` over terms is
+   * not, and neither is a turnstile that takes two sentences to a
+   * judgement.
    */
   isConnective(term: string): boolean {
     const info = this.spec.terms.get(term);
-    const provable = this.provableSort;
+    const sentence = this.sentenceSort;
     const notation = this.canonical.get(term);
 
     return (
-      provable !== null &&
+      sentence !== null &&
       info !== undefined &&
+      info.returnSort === sentence &&
       notation !== undefined &&
       notation.form === "simple" &&
       notation.fixity !== "prefix" &&
@@ -284,7 +298,7 @@ export class SurfaceLanguage {
         (binder) =>
           !binder.binds &&
           "sort" in binder.type &&
-          binder.type.sort === provable,
+          binder.type.sort === sentence,
       )
     );
   }
@@ -469,10 +483,10 @@ class Parse {
     }
 
     let term = parsed;
-    const provable = this.lang.provableSort;
+    const sentence = this.lang.sentenceSort;
 
-    if (provable !== null && term.sort !== provable) {
-      const wrapped = this.coerceTerm(term, provable);
+    if (sentence !== null && term.sort !== sentence) {
+      const wrapped = this.coerceTerm(term, sentence);
 
       if (wrapped === null) {
         this.report("term_not_sentence", { actual: term.sort }, term.span);
@@ -1262,7 +1276,7 @@ class Parse {
   private lint(term: Term): void {
     const lints = this.lang.spec.lints;
     const assocNone = this.lang.spec.assocNone;
-    const provable = this.lang.provableSort;
+    const sentence = this.lang.sentenceSort;
 
     walkTerm(term, (node, bound) => {
       if (node.kind === "variable") {
@@ -1305,15 +1319,15 @@ class Parse {
       }
 
       if (lints.includes("parenthesize-binary-only") && node.grouped) {
-        const binderSorts = this.lang.spec.terms
-          .get(node.term)
-          ?.binders.map(binderSort);
+        const info = this.lang.spec.terms.get(node.term);
+        const binderSorts = info?.binders.map(binderSort);
         const connective =
           (node.fixity === "infixl" || node.fixity === "infixr") &&
-          provable !== null &&
+          sentence !== null &&
+          info?.returnSort === sentence &&
           binderSorts !== undefined &&
           binderSorts.length === 2 &&
-          binderSorts.every((sort) => sort === provable);
+          binderSorts.every((sort) => sort === sentence);
 
         if (!connective) {
           this.report(

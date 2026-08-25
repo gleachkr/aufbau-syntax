@@ -14,7 +14,7 @@
  *     share one sort (adjacency of that sort's expressions denotes it);
  *   - `elided` attaches to a nullary term (supplied when an argument of
  *     its sort is missing, dropped again when printing);
- *   - `role` attaches to a `term` or `def`;
+ *   - `role` attaches to a `sort`, a `term`, or a `def`;
  *   - everything else is spec-wide and may sit on any statement.
  *
  * The lexicon itself needs no `@syntax` at all: letters are ordinary term

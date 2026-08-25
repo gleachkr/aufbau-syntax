@@ -300,8 +300,19 @@ describe("spec validation", () => {
   });
 
   test("role annotations check their attachment", () => {
-    const roleOnSort = parseSpec("--| @syntax role conditional\nsort wff;");
-    expect(ids(roleOnSort)).toEqual(["role_target"]);
+    const onAxiom = parseSpec(
+      `${WFF}term t: wff;\n--| @syntax role sentence\naxiom ax: $ t $;`,
+    );
+    expect(ids(onAxiom)).toEqual(["role_target"]);
+  });
+
+  test("a role sits on a sort as readily as on a term", () => {
+    const { spec, diagnostics } = parseSpec(
+      "--| @syntax role sentence\nsort wff;\n--| @syntax role falsum\nterm bot: wff;",
+    );
+    expect(diagnostics).toEqual([]);
+    expect(spec.sorts.get("wff")?.roles).toEqual(["sentence"]);
+    expect(spec.terms.get("bot")?.roles).toEqual(["falsum"]);
   });
 
   test("a @vars token cannot also be a declared term", () => {

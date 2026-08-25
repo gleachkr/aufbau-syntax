@@ -16,7 +16,7 @@ Attachment rules:
 |---|---|
 | `juxtaposed` | a binary term whose arguments and result share one sort |
 | `elided` | a nullary term |
-| `role` | a `term` or `def` |
+| `role` | a `sort`, a `term`, or a `def` |
 | everything else | any statement — the effect is spec-wide |
 
 ## The lexicon needs no `@syntax` at all
@@ -50,7 +50,7 @@ term f (s: seq): tm;
   and the **last declared is canonical** — it is what the printer writes.
   Put the ASCII forms first and the display glyph last.
 - **Spacing** is derived: the display printer spaces sentential
-  connectives (infix over the provable sort: `P ∧ Q`) and sets everything
+  connectives (infix over the sentence sort: `P ∧ Q`) and sets everything
   else tight (`¬P`, `∀x`, `a=b`, `R(a,b)`).
 - **Display parenthesization** is derived: connective compounds are always
   parenthesized (the textbook full-paren convention), everything else
@@ -288,5 +288,26 @@ Passthrough metadata naming what a constructor *means* to a consumer — a
 truth-table evaluator looks for `conjunction`, a model checker for
 `forall`. The library records roles on `TermInfo` and interprets none of
 them. Lexicon letters need no roles: a predicate *is* a term returning
-the provable sort, a function one returning a term sort — derivable from
+the sentence sort, a function one returning a term sort — derivable from
 shape.
+
+A role may also sit on a **sort**, where it is recorded on `SortInfo`:
+
+```text
+--| @syntax role sentence
+sort wff;
+```
+
+Of these the library interprets exactly one — `sentence`, because parsing
+must have a target sort. `SurfaceLanguage.sentenceSort` is the sort so
+marked, and it decides three things: what student input is read at (and
+coerced to, hence which terms are refused as `term_not_sentence`), which
+constructors count as connectives for forallx's bracket convention and the
+printer's spacing, and what the `closed-sentences` lint ranges over.
+
+Without the annotation `sentenceSort` falls back to the first sort
+carrying MM0's `provable` modifier, which is what every spec here relies
+on. Declaring it matters when a file has **more than one** provable sort:
+a theory that states its judgements as `Γ ⊢ φ` in a sort of their own is
+saying two different things are assertable, and only the spec knows which
+of them a student may be asked to write.

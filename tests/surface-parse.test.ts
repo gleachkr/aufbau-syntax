@@ -480,3 +480,65 @@ describe("Carnap prop: refusals", () => {
     expect((await propFails("P /\\")).id).toBe("expected_formula");
   });
 });
+
+describe("the sentence sort", () => {
+  // A theory that keeps its judgements in a provable sort of their own:
+  // `⊢` is what may be asserted, `wff` is what a student may write. The
+  // role says which is which; without it the first provable sort wins and
+  // input would be read at `judgement`.
+  const SEQUENT = `
+delimiter $ ( ) $;
+--| @syntax role sentence
+provable sort wff;
+provable sort judgement;
+term P: wff;
+term Q: wff;
+term and (p q: wff): wff;
+infixl and: $/\\\\$ prec 40;
+term nd (p q: wff): judgement;
+infixl nd: $|-$ prec 10;
+`;
+
+  function language(source: string): SurfaceLanguage {
+    const { spec, diagnostics } = parseSpec(source);
+
+    expect(diagnostics).toEqual([]);
+
+    return new SurfaceLanguage(spec);
+  }
+
+  test("a declared sentence role wins over declaration order", () => {
+    const lang = language(SEQUENT);
+
+    expect(lang.provableSort).toBe("wff");
+    expect(lang.sentenceSort).toBe("wff");
+    expect(lang.isConnective("and")).toBe(true);
+    expect(lang.isConnective("nd")).toBe(false);
+  });
+
+  test("student input is read at the sentence sort, not the judgement", () => {
+    const lang = language(SEQUENT.replace("--| @syntax role sentence\n", ""));
+
+    // Without the role, "first provable sort found" is the only rule, and
+    // this file declares `wff` first — so the two agree here. What the
+    // role buys is that they keep agreeing when the order changes.
+    expect(lang.sentenceSort).toBe("wff");
+
+    const flipped = language(
+      SEQUENT.replace("provable sort judgement;", "").replace(
+        "--| @syntax role sentence\nprovable sort wff;",
+        "provable sort judgement;\nprovable sort wff;",
+      ),
+    );
+
+    expect(flipped.sentenceSort).toBe("judgement");
+    expect(flipped.isConnective("and")).toBe(false);
+  });
+
+  test("no role and no provable sort leaves the target open", () => {
+    const lang = language("sort tm;\nterm a: tm;");
+
+    expect(lang.sentenceSort).toBe(null);
+    expect(lang.parse("a").ok).toBe(true);
+  });
+});

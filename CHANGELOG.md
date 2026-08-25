@@ -1,5 +1,22 @@
 # Changelog
 
+## Unreleased
+
+**`@syntax role` may sit on a sort, and one sort role is interpreted:
+`sentence`.** `SurfaceLanguage` gained `sentenceSort` — the sort student
+input is read at, which decides the parse target and its coercion, which
+constructors count as connectives, and what `closed-sentences` ranges
+over. It falls back to the first `provable` sort, so every existing spec
+is unaffected; declaring it matters when a file has more than one provable
+sort, which is what a theory does when it states its judgements as
+`Γ ⊢ φ` in a sort of their own. `SortInfo` gained `roles`, symmetric with
+`TermInfo`.
+
+`isConnective` also now requires the constructor to *return* the sentence
+sort, not merely to take two of them — a turnstile from two sentences to a
+judgement was previously counted as a connective, and would have been
+spaced and parenthesized as one.
+
 ## 0.0.2 — 2026-08-24
 
 **Breaking: student input is segmented by declared delimiters, not by the

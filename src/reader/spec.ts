@@ -40,6 +40,7 @@ export interface SortInfo {
   readonly foreignAnnotations: readonly Annotation[];
   readonly modifiers: readonly string[];
   readonly name: string;
+  readonly roles: readonly string[];
   readonly span: Span;
   /**
    * The sort's variable tokens, read from the engine's own `@vars`
@@ -155,7 +156,7 @@ const TEMPLATES: Record<string, string> = {
   elided_duplicate: "sort {sort} already has an elided term",
   vars_term_conflict:
     "@vars token {token} is also a declared term; a name can be only one",
-  role_target: "@syntax role must sit on a term",
+  role_target: "@syntax role must sit on a sort or a term",
   delimiter_unknown:
     "delimiter {token} is neither a notation token, a bracket, nor a lexicon name, so no input can ever be read as it",
   delimiter_token_not_delimited:
@@ -400,6 +401,7 @@ export function parseSpec(source: string): SpecParse {
           foreignAnnotations: foreign,
           modifiers: statement.modifiers,
           name: statement.name,
+          roles: [],
           span: statement.span,
           vars,
         });
@@ -582,6 +584,18 @@ export function parseSpec(source: string): SpecParse {
       }
 
       case "role": {
+        if (statement.kind === "sort") {
+          const info = sorts.get(statement.name);
+
+          if (info !== undefined) {
+            sorts.set(statement.name, {
+              ...info,
+              roles: [...info.roles, annotation.role],
+            });
+          }
+          break;
+        }
+
         if (statement.kind !== "term" && statement.kind !== "def") {
           report(diagnostics, "role_target", {}, span);
           break;
