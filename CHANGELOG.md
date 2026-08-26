@@ -1,5 +1,38 @@
 # Changelog
 
+## Unreleased
+
+**A parse can be given the enclosing theorem's binder scope.**
+`parse(text, { scope })` takes a `Map` of name to sort. A name in scope
+reads as a variable of that sort and *stops* reading as whatever the
+lexicon declares it to be — which is what the engine's own math parser
+does, a theorem's binders shadowing the file's declarations for the length
+of that theorem. Nothing is shadowed by default, so no existing call
+behaves differently.
+
+Without it, text belonging to a schematic theorem cannot be read at all,
+and fails in the worse of the two possible ways. `theorem mp (a b: wff)`
+stated as `P → Q` does not refuse against a spec that spells `P` as a
+predicate letter — it parses, to `(P snil) → (Q snil)`, and every
+downstream artifact is silently about the wrong thing. The *sort* is not
+what makes a collision dangerous: `{f: tm}` reads as the function letter
+applied to the empty sequence on exactly the same terms.
+
+Two things scope deliberately does not do. It does not shadow **notation**:
+Calgary spells ∀ `A`, and a theorem binding `(A: wff)` still has to be able
+to quantify, so the token reading keeps its priority and backtracking
+settles which one an occurrence wants. And it does not reach `delaborate`,
+the display-printing direction — engine mode does not delaborate, which is
+the whole output path a schematic theorem's text takes.
+
+A scoped name is also *bound* for `closed-sentences`: a line of a proof of
+`theorem unimp {x: var} …` may mention `x`, because the theorem binds it.
+
+`tests/engine-align.test.ts` now runs two schematic cases through the real
+Aufbau compiler, so the claim that our scoped emission is what the engine
+reads inside those binders is checked against the engine rather than
+asserted.
+
 ## 0.0.3
 
 **The sort input is read at is a `parse` argument.**
