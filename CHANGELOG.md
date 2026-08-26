@@ -18,12 +18,24 @@ downstream artifact is silently about the wrong thing. The *sort* is not
 what makes a collision dangerous: `{f: tm}` reads as the function letter
 applied to the empty sequence on exactly the same terms.
 
-Two things scope deliberately does not do. It does not shadow **notation**:
-Calgary spells ∀ `A`, and a theorem binding `(A: wff)` still has to be able
-to quantify, so the token reading keeps its priority and backtracking
-settles which one an occurrence wants. And it does not reach `delaborate`,
-the display-printing direction — engine mode does not delaborate, which is
-the whole output path a schematic theorem's text takes.
+Scope reaches **elab literals** too. A rule like `$ A ?x:var $ => $ ∀ ?x $`
+is how a spec spells a quantifier with a letter that is also a predicate
+letter, and its literal matches the raw chunk — so without this a bound `A`
+was eaten before it was ever classified, and no scope could reach it. Elab
+is a surface convenience the engine never sees, so a binder displaces it on
+the same grounds it displaces the lexicon. The consequence is worth stating:
+inside a theorem binding `A`, the `A x` spelling of `∀ x` is gone, and `Ax
+Fx` refuses rather than silently quantifying.
+
+Two things scope deliberately does not do. It does not shadow **notation** —
+a declared token keeps its meaning, because that is what MM0 does with a
+math constant however the enclosing theorem binds its variables. (A spec may
+therefore still have a letter that is at once a token and a binder name, and
+backtracking settles which reading an occurrence wants; a spec that spells
+its quantifiers through elab instead, as a merged theory-and-language file
+must, does not.) And it does not reach `delaborate`, the display-printing
+direction — engine mode does not delaborate, which is the whole output path
+a schematic theorem's text takes.
 
 A scoped name is also *bound* for `closed-sentences`: a line of a proof of
 `theorem unimp {x: var} …` may mention `x`, because the theorem binds it.

@@ -1,6 +1,6 @@
 import { describe, expect, test } from "bun:test";
 import { readFile } from "node:fs/promises";
-import type { Term } from "../src/index";
+import type { Scope, Term } from "../src/index";
 import { parseSpec, printTerm, SurfaceLanguage } from "../src/index";
 
 /**
@@ -197,6 +197,47 @@ prefix ex: $∃$ prec 50;
       expect(sexpr(parsed.term)).toBe("(all x (ex y (G (scomma x y))))");
       expect(printTerm(bergmann, parsed.term, "display")).toBe("(∀x)(∃y)Gxy");
     }
+  });
+
+  test("a bound name is not eaten by an elab literal", () => {
+    // Calgary's shape: the quantifier is spelled with a letter that is also
+    // a predicate letter, so the spelling lives in an elab rule rather than
+    // a notation (MM0 gives a math token one meaning, and the *term* has to
+    // stay writable). A theorem binding that letter displaces the rule too.
+    //
+    // Elab is a surface convenience the engine never sees — `H x` is not a
+    // spelling of anything inside a math string — so inside `theorem …
+    // (H: wff)` the letter is the metavariable, full stop. A literal that
+    // matched here would eat the name before it was ever classified, and no
+    // scope could reach it.
+    const letterQuantifier = language(
+      "--| @syntax elab $ H ?x:var $ => $ ∀ ?x $ input-only",
+    );
+    const bindsH: Scope = new Map([["H", "wff"]]);
+
+    // Unbound, the rule fires and `H` spells the quantifier.
+    const quantified = letterQuantifier.parse("Hx Fx");
+
+    expect(quantified.ok).toBe(true);
+
+    if (quantified.ok) {
+      expect(sexpr(quantified.term)).toBe("(all x (F x))");
+    }
+
+    // Bound, it is the theorem's own metavariable.
+    const shadowed = letterQuantifier.parse("H -> H", { scope: bindsH });
+
+    expect(shadowed.ok).toBe(true);
+
+    if (shadowed.ok) {
+      expect(sexpr(shadowed.term)).toBe("(imp H H)");
+    }
+
+    // And the quantifier spelling is genuinely gone for that theorem: `Hx`
+    // is a metavariable followed by a stray variable, which is a refusal
+    // rather than a silent ∀. That refusal is the point — it is what an
+    // authoring-time warning about the collision has to be able to explain.
+    expect(letterQuantifier.parse("Hx Fx", { scope: bindsH }).ok).toBe(false);
   });
 
   test("diagnostics point at the original text, not the elaborated text", () => {

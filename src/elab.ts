@@ -146,7 +146,15 @@ function matchRule(
       // constraining its pieces to declared tokens would be a half-measure
       // with nothing behind it. Anchoring is unaffected: the chunk's
       // boundaries were fixed by the delimiters before any lookup.
-      if (point.chunk !== element.token) {
+      //
+      // A chunk the enclosing theorem *binds* is the one exception. Elab is
+      // a surface convenience the engine knows nothing about — Calgary's
+      // `A x` for `∀ x` is not a spelling of anything inside a math string —
+      // so a binder named `A` displaces it exactly as it displaces the
+      // lexicon's `A`, and for the same reason: inside that theorem, `A` is
+      // the metavariable and nothing else. Without this a bound name is
+      // eaten before it is ever classified, and the scope never gets a say.
+      if (point.chunk !== element.token || scope.has(point.chunk)) {
         return null;
       }
 
