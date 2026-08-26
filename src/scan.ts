@@ -18,6 +18,10 @@
  * The delimiter set is a parameter: student input is read under the spec's
  * `surfaceDelimiters`, and this library's own engine-mode output under the
  * theory's own `delimiters`.
+ *
+ * Classification is where a parse's {@link Scope} applies. Segmentation is
+ * not: a binder shadows what a chunk *means*, never where the chunk ends,
+ * so a theorem cannot change how its own statement is cut up.
  */
 
 import {
@@ -32,6 +36,20 @@ import type { Spec } from "./reader/spec.js";
 import { type NameRef, surfaceVocabulary } from "./vocabulary.js";
 
 export type { NameRef } from "./vocabulary.js";
+
+/**
+ * Names a parse holds in scope, each with the sort it stands at — the
+ * binders of the theorem the text belongs to.
+ *
+ * A theorem's binders shadow the file's declarations for the length of that
+ * theorem, and a surface parse that does not know them reads them as the
+ * declarations they collide with: `theorem mp (a b: wff)` turns the
+ * metavariable `a` into whatever `a` means in the lexicon. A scope closes
+ * that, and it is not the parser's to infer — the caller holds the theorem.
+ */
+export type Scope = ReadonlyMap<string, string>;
+
+const NO_SCOPE: Scope = new Map();
 
 export type Reading =
   | {
@@ -74,9 +92,23 @@ export class Scanner {
 
   /**
    * The chunk at `position` in `text`, after skipping whitespace, and what
-   * it can be read as: the notation token first, then the lexicon name.
+   * it can be read as: the notation token first, then the name.
+   *
+   * `scope` acts on the *name* reading, and only on it. A scoped chunk
+   * reads as a variable of its sort and stops reading as whatever the
+   * lexicon declares it to be — replacing that reading rather than
+   * outranking it, since a fallback would let `P snil` back in silently
+   * whenever the metavariable reading happened to fail.
+   *
+   * Its notation reading is untouched, and keeps its priority. Calgary
+   * spells ∀ `A`, so a theorem binding `(A: wff)` still has to be able to
+   * quantify; which reading a given occurrence wants is settled by the
+   * parser's backtracking, exactly as the `A`-the-quantifier /
+   * `A`-the-predicate-letter ambiguity already is. Notation is not part of
+   * what a binder shadows — MM0's own math parser reads a constant as a
+   * constant however the enclosing theorem binds its variables.
    */
-  at(text: string, position: number): ScanPoint {
+  at(text: string, position: number, scope: Scope = NO_SCOPE): ScanPoint {
     let start = position;
 
     while (start < text.length && /\s/.test(text[start] ?? "")) {
@@ -94,7 +126,11 @@ export class Scanner {
       readings.push({ kind: "token", token: chunk, length: chunk.length });
     }
 
-    const ref = this.names.get(chunk);
+    const scoped = scope.get(chunk);
+    const ref: NameRef | undefined =
+      scoped === undefined
+        ? this.names.get(chunk)
+        : { kind: "var", sort: scoped };
 
     if (ref !== undefined) {
       readings.push({ kind: "name", name: chunk, ref, length: chunk.length });

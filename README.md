@@ -78,6 +78,35 @@ if (result.ok) {
 }
 ```
 
+### Reading text that belongs to a theorem
+
+Text taken from inside a theorem is read in that theorem's **scope** — its
+binders, name to sort:
+
+```ts
+language.parse("~(P & Q) <-> (~P | ~Q)", {
+  scope: new Map([                  // theorem … (P Q: wff): …
+    ["P", "wff"],
+    ["Q", "wff"],
+  ]),
+});
+```
+
+A name in scope reads as a variable of that sort and stops reading as
+whatever the lexicon declares it to be — which is what the engine's own
+math parser does, a theorem's binders shadowing the file's declarations for
+the length of that theorem. Without the scope, a spec that spells `P` as a
+predicate letter answers in the metavariable's place, and quietly: `P → Q`
+parses, to the wrong thing. Nothing about the *sort* makes a collision
+dangerous — `{f: tm}` reads as the function letter `f` applied to the empty
+sequence on the same terms.
+
+Notation is not shadowed. Calgary spells ∀ `A`, and a theorem binding
+`(A: wff)` still has to be able to quantify; which reading an occurrence
+wants is settled by backtracking. Scope also settles what
+`closed-sentences` counts as free: a line of a proof of `theorem unimp
+{x: var} …` may mention `x`, because the theorem binds it.
+
 See `docs/syntax-annotations.md` for the annotation reference and
 `docs/authoring-a-spec.md` for how to write a new system.
 

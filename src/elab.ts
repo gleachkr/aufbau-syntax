@@ -50,7 +50,9 @@ import type {
   RuleLiteral,
   RuleTemplateElement,
 } from "./reader/annotations.js";
-import type { Reading } from "./scan.js";
+import type { Reading, Scope } from "./scan.js";
+
+const NO_SCOPE: Scope = new Map();
 
 /**
  * The matcher's pattern element: the reader's, plus an optional separator
@@ -106,8 +108,9 @@ function matchCapture(
   text: string,
   position: number,
   klass: string,
+  scope: Scope,
 ): { captured: Captured; end: number } | null {
-  const point = lang.scanner.at(text, position);
+  const point = lang.scanner.at(text, position, scope);
   const reading = point.readings.find(
     (r): r is Reading & { kind: "name" } =>
       r.kind === "name" && nameMatchesSort(lang, r, klass),
@@ -128,13 +131,14 @@ function matchRule(
   pattern: readonly MatchElement[],
   text: string,
   position: number,
+  scope: Scope,
 ): RuleMatch | null {
   const captures = new Map<string, Captured[]>();
   let at = position;
 
   for (const element of pattern) {
     if (element.kind === "literal") {
-      const point = lang.scanner.at(text, at);
+      const point = lang.scanner.at(text, at, scope);
 
       // A literal matches the *chunk*, declared vocabulary or not. Elab
       // exists to accept surface forms the MM0 grammar rejects — the Quine
@@ -151,7 +155,7 @@ function matchRule(
     }
 
     const taken: Captured[] = [];
-    const first = matchCapture(lang, text, at, element.class);
+    const first = matchCapture(lang, text, at, element.class, scope);
 
     if (first !== null) {
       taken.push(first.captured);
@@ -165,7 +169,7 @@ function matchRule(
           let next = at;
 
           if (separator !== null) {
-            const point = lang.scanner.at(text, next);
+            const point = lang.scanner.at(text, next, scope);
             const sepReading = point.readings.find(
               (r) => r.kind === "token" && r.token === separator,
             );
@@ -177,7 +181,7 @@ function matchRule(
             next = point.start + sepReading.length;
           }
 
-          const more = matchCapture(lang, text, next, element.class);
+          const more = matchCapture(lang, text, next, element.class, scope);
 
           if (more === null) {
             break;
@@ -257,6 +261,7 @@ function applyRule(
   pattern: readonly MatchElement[],
   template: readonly RuleTemplateElement[],
   separator: " " | "",
+  scope: Scope,
 ): Elaborated {
   const originOf = (index: number): number =>
     origin[index] ?? origin[origin.length - 1] ?? 0;
@@ -272,7 +277,7 @@ function applyRule(
   };
 
   while (position < text.length) {
-    const point = lang.scanner.at(text, position);
+    const point = lang.scanner.at(text, position, scope);
 
     copy(position, point.start);
 
@@ -281,7 +286,7 @@ function applyRule(
       break;
     }
 
-    const match = matchRule(lang, pattern, text, point.start);
+    const match = matchRule(lang, pattern, text, point.start, scope);
 
     if (match !== null && match.end > point.start) {
       const emitted = emitTemplate(
@@ -362,7 +367,11 @@ function invertPattern(rule: ElabRule): readonly RuleTemplateElement[] {
  * Apply every elaboration rule forward, in declaration order, returning
  * the elaborated text and the offset map back to the source.
  */
-export function elaborate(lang: SurfaceLanguage, text: string): Elaborated {
+export function elaborate(
+  lang: SurfaceLanguage,
+  text: string,
+  scope: Scope = NO_SCOPE,
+): Elaborated {
   let current: Elaborated = {
     text,
     origin: [...text].map((_, index) => index),
@@ -376,6 +385,7 @@ export function elaborate(lang: SurfaceLanguage, text: string): Elaborated {
       rule.pattern,
       rule.template,
       " ",
+      scope,
     );
   }
 
@@ -385,6 +395,12 @@ export function elaborate(lang: SurfaceLanguage, text: string): Elaborated {
 /**
  * Apply every invertible rule backward over display text, last declared
  * first, joining replacements tight (display is character-level anyway).
+ *
+ * No scope, deliberately. Engine mode does not delaborate — it is the whole
+ * output path a schematic theorem's text takes — so threading one here
+ * would buy nothing today and cost `printTerm` a parameter. A display
+ * printer that has to re-sugar a metavariable correctly is the point at
+ * which to add it.
  */
 export function delaborate(lang: SurfaceLanguage, text: string): string {
   let current = text;
@@ -407,6 +423,7 @@ export function delaborate(lang: SurfaceLanguage, text: string): string {
       pattern,
       invertPattern(rule),
       "",
+      NO_SCOPE,
     ).text;
   }
 

@@ -32,7 +32,7 @@ import { type Diagnostic, diagnostic, type Span } from "./diagnostics.js";
 import { elaborate, remapSpan } from "./elab.js";
 import type { NotationInfo, Spec, TermInfo } from "./reader/spec.js";
 import type { Binder, TypeRef } from "./reader/statements.js";
-import { type Reading, Scanner } from "./scan.js";
+import { type Reading, Scanner, type ScanPoint, type Scope } from "./scan.js";
 import type { AppTerm, Term, VariableTerm } from "./term.js";
 import { walkTerm } from "./term.js";
 
@@ -112,6 +112,8 @@ export type ParseResult = ParseFailure | ParseSuccess;
  * counterpart of `printTerm`'s two modes.
  */
 export type ParseMode = "engine" | "surface";
+
+const EMPTY_SCOPE: Scope = new Map();
 
 function binderSort(binder: Binder | undefined): string {
   if (binder === undefined || !("sort" in binder.type)) {
@@ -382,36 +384,54 @@ export class SurfaceLanguage {
    * and fully parenthesized, so it needs no wide delimiter set — and a
    * surface elab rule would misread it, Quine's `( ?x:var )` happily
    * eating the `(x)` inside `(F (x))`.
+   *
+   * `scope` is the enclosing theorem's binders, name to sort. A name in
+   * scope reads as a variable of that sort and *stops* reading as whatever
+   * the lexicon declares it to be — which is what the engine's own math
+   * parser does, and the only way text belonging to a schematic theorem
+   * can be read at all. Without it, `theorem mp (a b: wff)` has its
+   * metavariables silently reinterpreted (or, more happily, refused) by a
+   * lexicon that has never heard of them. See {@link Scope}.
    */
   parse(
     text: string,
     options: {
       readonly lints?: boolean;
       readonly mode?: ParseMode;
+      readonly scope?: Scope;
       readonly sort?: string;
     } = {},
   ): ParseResult {
     const mode = options.mode ?? "surface";
     const lints = options.lints ?? mode === "surface";
     const sort = options.sort ?? this.provableSort;
+    const scope = options.scope ?? EMPTY_SCOPE;
 
     if (mode === "engine") {
-      return new Parse(this, this.engineScanner, text, lints, sort).run();
+      return new Parse(
+        this,
+        this.engineScanner,
+        text,
+        lints,
+        sort,
+        scope,
+      ).run();
     }
 
     if (this.spec.elabRules.length === 0) {
-      return new Parse(this, this.scanner, text, lints, sort).run();
+      return new Parse(this, this.scanner, text, lints, sort, scope).run();
     }
 
     // Elaborate first, then map every span in the outcome back through
     // the origin map, so nothing downstream sees elaborated offsets.
-    const elaborated = elaborate(this, text);
+    const elaborated = elaborate(this, text, scope);
     const result = new Parse(
       this,
       this.scanner,
       elaborated.text,
       lints,
       sort,
+      scope,
     ).run();
     const diagnostics = result.diagnostics.map((diag) => ({
       ...diag,
@@ -454,13 +474,20 @@ class Parse {
     private readonly lintsEnabled: boolean,
     /** The sort the result is read at; null leaves the target open. */
     private readonly sort: string | null,
+    /** The enclosing theorem's binders, shadowing the lexicon. */
+    private readonly scope: Scope,
   ) {}
+
+  /** The scan point at `position`, classified in this parse's scope. */
+  private at(position: number): ScanPoint {
+    return this.scanner.at(this.text, position, this.scope);
+  }
 
   run(): ParseResult {
     const parsed = this.parseExpr(0);
 
     if (parsed !== null) {
-      const point = this.scanner.at(this.text, this.position);
+      const point = this.at(this.position);
 
       if (!point.atEnd) {
         const trial = this.bestTrialFailure;
@@ -616,7 +643,7 @@ class Parse {
     }
 
     for (;;) {
-      const point = this.scanner.at(this.text, this.position);
+      const point = this.at(this.position);
 
       if (point.atEnd) {
         return left;
@@ -669,7 +696,7 @@ class Parse {
   }
 
   private parsePrimary(min: number): Term | null {
-    const point = this.scanner.at(this.text, this.position);
+    const point = this.at(this.position);
 
     if (point.atEnd) {
       return this.report(
@@ -789,7 +816,7 @@ class Parse {
       return null;
     }
 
-    const point = this.scanner.at(this.text, this.position);
+    const point = this.at(this.position);
     const reading = point.readings.find(
       (r) => r.kind === "token" && r.token === close,
     );
@@ -912,7 +939,7 @@ class Parse {
 
     for (const part of entry.parts) {
       if (part.kind === "constant") {
-        const point = this.scanner.at(this.text, this.position);
+        const point = this.at(this.position);
         const reading = point.readings.find(
           (r) => r.kind === "token" && r.token === part.token,
         );
@@ -1004,7 +1031,7 @@ class Parse {
   }
 
   private expectBoundVariable(sort: string): VariableTerm | null {
-    const point = this.scanner.at(this.text, this.position);
+    const point = this.at(this.position);
     const reading = point.readings.find(
       (r): r is Reading & { kind: "name" } =>
         r.kind === "name" && r.ref.kind === "var" && r.ref.sort === sort,
@@ -1077,7 +1104,7 @@ class Parse {
 
     for (const binder of argBinders) {
       const target = binderSort(binder);
-      const point = this.scanner.at(this.text, this.position);
+      const point = this.at(this.position);
       const open = this.lang.spec.groupingPairs[0]?.[0] ?? "(";
       const close = this.lang.spec.groupingPairs[0]?.[1] ?? ")";
       const openReading = point.readings.find(
@@ -1093,7 +1120,7 @@ class Parse {
           return null;
         }
 
-        const closePoint = this.scanner.at(this.text, this.position);
+        const closePoint = this.at(this.position);
         const closeReading = closePoint.readings.find(
           (r) => r.kind === "token" && r.token === close,
         );
@@ -1215,7 +1242,7 @@ class Parse {
    * is ambiguous under variadic sequences and stays deferred.
    */
   private glueOperand(target: string): Term | null {
-    const point = this.scanner.at(this.text, this.position);
+    const point = this.at(this.position);
 
     for (const reading of point.readings) {
       if (reading.kind === "name") {
@@ -1302,6 +1329,11 @@ class Parse {
   private lint(term: Term): void {
     const lints = this.lang.spec.lints;
     const assocNone = this.lang.spec.assocNone;
+    // A scoped name is bound where it stands: the enclosing theorem binds
+    // it. `theorem unimp {x: var} …` may perfectly well state a line with
+    // `x` free *in the line*, and calling that an open sentence would
+    // refuse the very proofs the scope exists to allow.
+    const scoped = new Set(this.scope.keys());
 
     walkTerm(term, (node, bound) => {
       if (node.kind === "variable") {
@@ -1312,7 +1344,8 @@ class Parse {
           lints.includes("closed-sentences") &&
           !node.binder &&
           this.lang.bindableSorts.has(node.sort) &&
-          !bound.has(node.name)
+          !bound.has(node.name) &&
+          !scoped.has(node.name)
         ) {
           this.report("free_variable", { name: node.name }, node.span);
         }

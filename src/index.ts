@@ -60,7 +60,7 @@ export type {
   TypeRef,
 } from "./reader/statements.js";
 export { parseStatements } from "./reader/statements.js";
-export type { Reading, ScanPoint } from "./scan.js";
+export type { Reading, ScanPoint, Scope } from "./scan.js";
 export { Scanner } from "./scan.js";
 export type { AppTerm, Fixity, Term, VariableTerm } from "./term.js";
 export { walkTerm } from "./term.js";
