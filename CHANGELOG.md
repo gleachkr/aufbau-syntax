@@ -1,6 +1,6 @@
 # Changelog
 
-## Unreleased
+## 0.0.4
 
 **A parse can be given the enclosing theorem's binder scope.**
 `parse(text, { scope })` takes a `Map` of name to sort. A name in scope
