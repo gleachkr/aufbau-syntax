@@ -7,9 +7,10 @@
  *
  *   1. **Grouping pairs** — `expression(max) → open expression(0) close`
  *      for every declared bracket pair, close matching open;
- *   2. **assoc-none levels** — a precedence in `@syntax assoc-none` refuses
- *      to chain regardless of its declared associativity (`P → Q → R` is an
- *      error, per forallx);
+ *   2. **Refused operands** — a connective's `@syntax forbid` list rejects
+ *      an unbracketed connective operand of the named shape, whatever
+ *      associativity would otherwise allow (`P → Q → R` and `P ∧ Q → R`
+ *      are both errors under forallx);
  *   3. **Lints** — the closed set of post-parse checks
  *      (`parenthesize-binary-only`, `closed-sentences`).
  *
@@ -44,7 +45,10 @@ const TEMPLATES: Record<string, string> = {
   expected_variable: "Expected a variable after the quantifier.",
   expected_bracket: "Expected “{bracket}”.",
   chain_refused:
-    "“{operator}” cannot be chained; add parentheses to group it.",
+    "“{operator}” cannot be repeated without parentheses; group it.",
+  mix_refused:
+    "“{inner}” and “{outer}” cannot be combined without parentheses.",
+  nest_refused: "“{inner}” needs parentheses inside “{outer}”.",
   group_binary_only:
     "Parentheses may only enclose a sentence joined by a two-place connective.",
   free_variable:
@@ -1328,7 +1332,6 @@ class Parse {
 
   private lint(term: Term): void {
     const lints = this.lang.spec.lints;
-    const assocNone = this.lang.spec.assocNone;
     // A scoped name is bound where it stands: the enclosing theorem binds
     // it. `theorem unimp {x: var} …` may perfectly well state a line with
     // `x` free *in the line*, and calling that an open sentence would
@@ -1353,28 +1356,7 @@ class Parse {
         return;
       }
 
-      // The chain refusal: an operand produced by an operator at the same
-      // assoc-none level, without its own brackets, has no reading.
-      if (
-        typeof node.prec === "number" &&
-        assocNone.has(node.prec) &&
-        (node.fixity === "infixl" || node.fixity === "infixr")
-      ) {
-        for (const arg of node.args) {
-          if (
-            arg.kind === "app" &&
-            typeof arg.prec === "number" &&
-            arg.prec === node.prec &&
-            (arg.fixity === "infixl" || arg.fixity === "infixr") &&
-            !arg.grouped
-          ) {
-            const operator =
-              arg.token ?? this.canonicalToken(arg.term) ?? arg.term;
-
-            this.report("chain_refused", { operator }, arg.span);
-          }
-        }
-      }
+      this.refuseOperands(node);
 
       if (lints.includes("parenthesize-binary-only") && node.grouped) {
         // The same class the printer brackets — see `isConnective`, which
@@ -1396,6 +1378,70 @@ class Parse {
         }
       }
     });
+  }
+
+  /**
+   * Refuse the unbracketed operands this connective says it will not take.
+   *
+   * An operand that is itself an infix connective, and carries no brackets
+   * of its own, stands in exactly one of three relations to the operator
+   * above it — the same term repeated (`chain`), a different term on the
+   * same rung (`mix`), or a term on a tighter rung (`nest`) — and the spec
+   * names which of them the operator refuses. Nothing here consults
+   * associativity: the parse has already happened, and what is at stake is
+   * whether the reading it found is one the textbook lets a student write
+   * without brackets.
+   *
+   * There is no *looser*-rung case to consider. Precedence climbing parses
+   * an operand of an operator at `p` with `min ≥ p` and admits only
+   * operators at `prec ≥ min`, so an unbracketed operand's own operator is
+   * always at `p` or tighter.
+   */
+  private refuseOperands(node: AppTerm): void {
+    const refuses = this.lang.spec.terms.get(node.term)?.refuses;
+
+    if (
+      refuses === undefined ||
+      refuses.size === 0 ||
+      typeof node.prec !== "number" ||
+      (node.fixity !== "infixl" && node.fixity !== "infixr")
+    ) {
+      return;
+    }
+
+    for (const arg of node.args) {
+      if (
+        arg.kind !== "app" ||
+        arg.grouped ||
+        typeof arg.prec !== "number" ||
+        (arg.fixity !== "infixl" && arg.fixity !== "infixr") ||
+        !this.lang.isConnective(arg.term)
+      ) {
+        continue;
+      }
+
+      const relation =
+        arg.term === node.term
+          ? "chain"
+          : arg.prec === node.prec
+            ? "mix"
+            : "nest";
+
+      if (!refuses.has(relation)) {
+        continue;
+      }
+
+      const inner = arg.token ?? this.canonicalToken(arg.term) ?? arg.term;
+      const outer = node.token ?? this.canonicalToken(node.term) ?? node.term;
+
+      // The span is the operand's, not the operator's: the brackets the
+      // reader has to add go around exactly that much of the input.
+      this.report(
+        relation === "chain" ? "chain_refused" : `${relation}_refused`,
+        relation === "chain" ? { operator: inner } : { inner, outer },
+        arg.span,
+      );
+    }
   }
 
   /** The last-declared notation token for a term — its canonical spelling. */

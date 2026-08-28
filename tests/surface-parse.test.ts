@@ -331,25 +331,64 @@ describe("forallx Calgary 2019: precedence and association", () => {
   });
 
   test("a conditional binds looser than conjunction", async () => {
-    expect(await calgary("P /\\ Q -> R")).toBe(
+    // The rung is still the rung: a conditional takes the whole
+    // conjunction, not the letter beside it. Calgary only makes you write
+    // the brackets, which is what the three tests below are about.
+    expect(await calgary("(P /\\ Q) -> R")).toBe(
       "(imp (and (P snil) (Q snil)) (R snil))",
+    );
+    expect(await calgary("P -> (Q /\\ R)")).toBe(
+      "(imp (P snil) (and (Q snil) (R snil)))",
     );
   });
 
-  test("conditionals and biconditionals refuse to chain", async () => {
+  // `calgary2019OpTable` puts all four connectives on one level with the
+  // two conditionals non-associative, so a conditional takes no unbracketed
+  // connective operand at all. Our three refusals name the three ways that
+  // can happen, and each is checked separately: a rule that fired on only
+  // one of them would still pass a test written against `P -> Q -> R`.
+  test("a conditional refuses to chain with itself", async () => {
     const error = await calgaryFails("P -> Q -> R");
 
     expect(error.id).toBe("chain_refused");
     expect(error.params).toEqual({ operator: "->" });
-    expect(await calgary("P -> (Q -> R)")).toBe(
-      "(imp (P snil) (imp (Q snil) (R snil)))",
-    );
     expect((await calgaryFails("P <-> Q <-> R")).params).toEqual({
       operator: "<->",
     });
-    expect((await calgaryFails("P -> Q <-> R")).params).toEqual({
-      operator: "<->",
-    });
+    expect(await calgary("P -> (Q -> R)")).toBe(
+      "(imp (P snil) (imp (Q snil) (R snil)))",
+    );
+  });
+
+  test("a conditional refuses to mix with a biconditional", async () => {
+    const error = await calgaryFails("P -> Q <-> R");
+
+    expect(error.id).toBe("mix_refused");
+    expect(error.params).toEqual({ inner: "<->", outer: "->" });
+    expect(await calgary("P -> (Q <-> R)")).toBe(
+      "(imp (P snil) (iff (Q snil) (R snil)))",
+    );
+  });
+
+  test("a conditional refuses a conjunction nested on either side", async () => {
+    const error = await calgaryFails("P /\\ Q -> R");
+
+    expect(error.id).toBe("nest_refused");
+    expect(error.params).toEqual({ inner: "/\\", outer: "->" });
+    expect((await calgaryFails("P -> Q /\\ R")).id).toBe("nest_refused");
+    expect((await calgaryFails("P <-> Q \\/ R")).id).toBe("nest_refused");
+  });
+
+  test("nothing was said about conjunction, so it refuses nothing", async () => {
+    // The marks are per-operator: `and` and `or` carry none, so they keep
+    // the default and go on chaining and mixing with each other. Only the
+    // conditionals were told to be strict.
+    expect(await calgary("P /\\ Q /\\ R")).toBe(
+      "(and (and (P snil) (Q snil)) (R snil))",
+    );
+    expect(await calgary("P /\\ Q \\/ R")).toBe(
+      "(or (and (P snil) (Q snil)) (R snil))",
+    );
   });
 });
 

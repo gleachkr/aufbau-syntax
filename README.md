@@ -46,10 +46,11 @@ One spec file per textbook system; no code per system.
    deliberately *not* here — it needs the parser's backtracking — hence
    the `juxtaposed` flag below.
 4. **Math parser** — a faithful port of MM0's dynamic precedence parser,
-   extended by declared conventions only: variant grouping pairs,
-   `assoc-none` precedence levels, a closed set of lints, and per-term
-   `elided` (bare `P` is `P(snil)`) and `juxtaposed` (adjacency at a sort
-   denotes its combiner — `Rxy`) flags.
+   extended by declared conventions only: variant grouping pairs, a closed
+   set of lints, per-connective `forbid` lists refusing unbracketed
+   operands, and per-term `elided` (bare `P` is
+   `P(snil)`) and `juxtaposed` (adjacency at a sort denotes its combiner —
+   `Rxy`) flags.
 5. **Printer** — last-declared notation is canonical; minimal parentheses
    by precedence; display options; invertible elab rules delaborate.
 

@@ -25,6 +25,7 @@ export { printTerm } from "./print.js";
 export type {
   ElabRule,
   LintName,
+  OperandRelation,
   RuleCapture,
   RuleLiteral,
   RulePatternElement,

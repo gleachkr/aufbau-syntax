@@ -206,15 +206,51 @@ Variant grouping pairs. `( )` is always available; a group must close with
 the partner of the bracket that opened it. A grouping token may not also
 be a notation token (validated).
 
-## `assoc-none <prec>`
+## `forbid <relation>…`
 
 ```text
---| @syntax assoc-none 20
+--| @syntax role conditional
+--| @syntax forbid chain mix nest
+term imp (ph ps: wff): wff;
 ```
 
-The named precedence level refuses to chain — `P → Q → R` is an error, per
-forallx — regardless of the associativity the notations there declare for
-the engine's benefit.
+Which unbracketed operands this connective refuses. The annotation sits on
+the `term` and lists the relations an operand may not stand in to it:
+
+| relation | forbids an unbracketed operand that is… | example |
+| --- | --- | --- |
+| `chain` | the same term, repeated | `A ∧ B ∧ C` |
+| `mix` | a different term on the same rung | `A ∧ B ∨ C` |
+| `nest` | a term on a tighter rung | `A → B ∧ C` |
+
+The three are exhaustive. Precedence climbing parses an operand of an
+operator at `p` with `min ≥ p` and admits only operators at `prec ≥ min`,
+so an unbracketed operand's own operator is never *looser* than its
+parent's; and a same-rung operand can only fall on the associative side,
+since the other side parses at `p + 1`. There is no fourth case to name.
+
+An unlisted relation is permitted, so an unmarked term refuses nothing,
+which is the ordinary reading and the default. Repeating the annotation
+accumulates. It is per-operator, so forbidding something of the
+conditionals says nothing about conjunction. Only a two-place term with an
+infix notation may carry it (validated) — anywhere else it would sit and do
+nothing.
+
+They constrain the *surface* only. Precedence and `infixl`/`infixr` are
+shared with the engine, which will not accept two associativities on one
+rung, so a refusal is stated here rather than by moving a notation to
+another level — and setting one never re-reads a formula that already
+parsed.
+
+Some conventions, for orientation:
+
+- forallx Calgary 2019 gives `imp` and `iff` `forbid chain mix nest` and
+  leaves `and`/`or` alone: `(P ∧ Q) → R` wants its brackets, `P ∧ Q ∨ R`
+  does not.
+- Carnap's default table is `forbid chain mix`, so `P ∧ Q → R` passes while
+  `P → Q → R` does not.
+- `forbid mix` on `and`/`or` is "∧ and ∨ never abut unbracketed", leaving
+  each free to repeat.
 
 ## `lint <name>`
 

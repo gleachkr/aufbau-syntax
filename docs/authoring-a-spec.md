@@ -14,7 +14,7 @@ business.
 The examples:
 
 - `specs/forallx-calgary-2019.mm0` — parenthesized predicates, shared
-  connective rungs, chain refusal, bracket discipline, closed sentences.
+  connective rungs, refused operands, bracket discipline, closed sentences.
 - `specs/forallx-magnus.mm0` — juxtaposed variadic atoms (`Rxy`), open
   formulas, permissive brackets.
 - `specs/carnap-prop.mm0` — a propositional language: five separate
@@ -188,8 +188,10 @@ for its turn: undeclare the letters and spell adjacency out.
    printer uses its own canonical token. Prefer a def over an elab rule
    whenever the sugar is *semantic*.
 
-9. **Refusals and display** — `assoc-none`, `lint`, and `display` lines,
-   conventionally at the top of the file, under the delimiter block.
+9. **Refusals and display** — `lint` and `display` lines, conventionally at
+   the top of the file under the delimiter block; and `forbid` on whichever
+   connectives want brackets around an operand, beside the `role` that
+   names them.
 
 One caution: a token that is both a notation and a letter (Calgary's `A`,
 at once ∀ and a predicate) parses fine — the surface parser backtracks —

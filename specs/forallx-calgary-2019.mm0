@@ -24,7 +24,6 @@
 --| @syntax delimiter $ -> => ⊃ > → <-> <=> <> ≡ ↔ $
 --| @syntax delimiter $ @ 3 ∀ ∃ = != ≠ !? _|_ ⊥ ⊤ $
 --| @syntax brackets ( ) [ ]
---| @syntax assoc-none 20
 --| @syntax lint parenthesize-binary-only
 --| @syntax lint closed-sentences
 --| @syntax display drop-outer-parens
@@ -119,6 +118,7 @@ infixl or: $|$ prec 30;
 infixl or: $∨$ prec 30;
 
 --| @syntax role conditional
+--| @syntax forbid chain mix nest
 term imp (p q: wff): wff;
 infixr imp: $->$ prec 20;
 infixr imp: $=>$ prec 20;
@@ -127,6 +127,7 @@ infixr imp: $>$ prec 20;
 infixr imp: $→$ prec 20;
 
 --| @syntax role biconditional
+--| @syntax forbid chain mix nest
 term iff (p q: wff): wff;
 infixr iff: $<->$ prec 20;
 infixr iff: $<=>$ prec 20;

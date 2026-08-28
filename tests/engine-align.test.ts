@@ -51,7 +51,7 @@ const CASES: readonly Case[] = [
   },
   {
     name: "connective_precedence",
-    source: "P /\\ Q -> S",
+    source: "(P /\\ Q) -> S",
     engineSpelling: "((P snil) ∧ (Q snil)) → (S snil)",
   },
   {

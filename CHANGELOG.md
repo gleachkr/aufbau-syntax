@@ -1,5 +1,53 @@
 # Changelog
 
+## Unreleased
+
+**A connective says which unbracketed operands it refuses.** A new per-term
+`@syntax forbid <relation>…` annotation, replacing `@syntax assoc-none
+<prec>`, which is gone. An operand that is itself an
+infix connective and carries no brackets of its own stands in exactly one
+of three relations to the operator above it, and each is refused
+separately:
+
+| relation | forbids an unbracketed operand that is… | example |
+| --- | --- | --- |
+| `chain` | the same term, repeated | `A ∧ B ∧ C` |
+| `mix` | a different term on the same rung | `A ∧ B ∨ C` |
+| `nest` | a term on a tighter rung | `A → B ∧ C` |
+
+The list is closed. Precedence climbing parses an operand of an operator
+at `p` with `min ≥ p` and admits only operators at `prec ≥ min`, so an
+unbracketed operand's own operator is never *looser* than its parent's,
+and a same-rung operand can only fall on the associative side. There is no
+fourth case to name.
+
+The old form could say only "this whole rung refuses to chain", which is
+at once too coarse and too weak. Too coarse: it cannot forbid `A ∧ B ∨ C`
+while allowing `A ∧ B ∧ C`, because a rung has one setting for every
+operator on it. Too weak: it cannot state forallx Calgary at all.
+`calgary2019OpTable` puts all four connectives on one level with the
+conditionals non-associative, so it refuses `P ∧ Q → R` and `P → Q ∧ R`
+as well as `P → Q → R`; under the old form the first two parsed happily,
+∧ and → being on different rungs.
+
+Saying it by renumbering rungs was not open to us: precedence and
+`infixl`/`infixr` are shared with the engine, which refuses two
+associativities on one rung (`precedence_mixed_associativity` here,
+`PrecedenceAssocMismatch` there), and moving a connective to another rung
+would silently re-read the theory's own math strings. So the refusal sits
+on the term and is decided on the parse tree — nothing that parsed before
+parses differently now, and the accepted set only ever shrinks.
+
+`Spec.assocNone` gives way to `TermInfo.refuses`, a set of the new
+`OperandRelation` type. `chain_refused` keeps its name and its
+`{operator}` parameter; `mix_refused` and `nest_refused` are new and carry
+`{inner, outer}`. The annotation may only sit on a two-place term with an
+infix notation — anywhere else it would do nothing — which is validated.
+
+`specs/forallx-calgary-2019.mm0` gives `imp` and `iff` `forbid chain mix
+nest` and leaves `and`/`or` untouched, so `P ∧ Q ∨ R` still reads as `(P ∧ Q) ∨ R`
+while `P ∧ Q → R` now wants its brackets, as the textbook does.
+
 ## 0.0.4
 
 **A parse can be given the enclosing theorem's binder scope.**

@@ -135,7 +135,7 @@ describe("Calgary engine mode", () => {
   test("engine text re-parses to the same tree", async () => {
     for (const source of [
       "AxEy~R(x,y)",
-      "P /\\ Q -> R",
+      "(P /\\ Q) -> R",
       "AxAyf(x,y) = f(y,x)",
       "Ex(F(x) /\\ x != a)",
       "~(P \\/ Q) <-> (~P /\\ ~Q)",

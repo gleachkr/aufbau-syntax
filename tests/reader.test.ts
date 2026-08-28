@@ -114,6 +114,7 @@ infixl scomma: $,$ prec 10;
 term F (s: seq): wff;
 term G (s: seq): wff;
 --| @syntax role conditional
+--| @syntax forbid chain nest
 term imp (p q: wff): wff;
 infixr imp: $->$ prec 25;
 infixr imp: $→$ prec 25;
@@ -121,7 +122,6 @@ term and (p q: wff): wff;
 infixl and: $/\\$ prec 30;
 infixl and: $∧$ prec 30;
 --| @syntax brackets ( ) [ ]
---| @syntax assoc-none 25
 --| @syntax lint parenthesize-binary-only
 --| @syntax lint closed-sentences
 --| @syntax display drop-outer-parens
@@ -153,7 +153,12 @@ prefix all: $∀$ prec 46;
       ["(", ")"],
       ["[", "]"],
     ]);
-    expect([...spec.assocNone]).toEqual([25]);
+    // The refusal flags ride onto their term, one relation each.
+    expect([...(spec.terms.get("imp")?.refuses ?? [])].sort()).toEqual([
+      "chain",
+      "nest",
+    ]);
+    expect(spec.terms.get("and")?.refuses.size ?? 0).toBe(0);
     expect(spec.lints).toEqual([
       "parenthesize-binary-only",
       "closed-sentences",
@@ -332,6 +337,46 @@ describe("spec validation", () => {
     ]);
     expect(ids(parseSpec("--| @syntax brackets (\nsort wff;"))).toEqual([
       "syntax_bad_brackets",
+    ]);
+    expect(ids(parseSpec("--| @syntax forbid\nsort wff;"))).toEqual([
+      "syntax_bad_forbid",
+    ]);
+    expect(
+      ids(parseSpec("--| @syntax forbid chain wobble\nsort wff;")),
+    ).toEqual(["syntax_bad_forbid"]);
+  });
+
+  test("@syntax forbid must sit somewhere it can bite", () => {
+    // A sort, a nullary term, an infix-less term: in each case there is no
+    // operand for it to refuse, so it would read clean and quietly do
+    // nothing. That silence is what the diagnostic is for.
+    const connective =
+      "provable sort wff;\nterm and (p q: wff): wff;\ninfixl and: $/\\$ prec 30;\n";
+
+    expect(
+      ids(parseSpec(`${connective}--| @syntax forbid chain\nsort other;`)),
+    ).toEqual(["refusal_target"]);
+    expect(
+      ids(parseSpec(`${connective}--| @syntax forbid chain\nterm bot: wff;`)),
+    ).toEqual(["refusal_target"]);
+    expect(
+      ids(
+        parseSpec(
+          `${connective}--| @syntax forbid chain\nterm nay (p q: wff): wff;`,
+        ),
+      ),
+    ).toEqual(["refusal_target"]);
+
+    // On a real infix connective it lands, and accumulates across lines.
+    const { diagnostics, spec } = parseSpec(
+      "provable sort wff;\n--| @syntax forbid chain\n--| @syntax forbid mix nest\nterm and (p q: wff): wff;\ninfixl and: $/\\$ prec 30;",
+    );
+
+    expect(diagnostics).toEqual([]);
+    expect([...(spec.terms.get("and")?.refuses ?? [])].sort()).toEqual([
+      "chain",
+      "mix",
+      "nest",
     ]);
   });
 

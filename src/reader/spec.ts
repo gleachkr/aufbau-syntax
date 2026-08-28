@@ -24,6 +24,7 @@ import { surfaceVocabulary } from "../vocabulary.js";
 import {
   type ElabRule,
   type LintName,
+  type OperandRelation,
   parseSyntaxAnnotation,
   type SyntaxAnnotation,
 } from "./annotations.js";
@@ -62,6 +63,12 @@ export interface TermInfo {
   /** `@syntax juxtaposed`: adjacency of its sort's leaves denotes it. */
   readonly juxtaposed: boolean;
   readonly name: string;
+  /**
+   * `@syntax forbid`: the unbracketed connective operands this term
+   * refuses. Empty — the default — permits all three.
+   * See {@link OperandRelation} for what each one names.
+   */
+  readonly refuses: ReadonlySet<OperandRelation>;
   readonly returnSort: string;
   readonly roles: readonly string[];
   readonly span: Span;
@@ -93,7 +100,6 @@ export type NotationInfo =
     };
 
 export interface Spec {
-  readonly assocNone: ReadonlySet<number>;
   readonly coercions: readonly CoercionInfo[];
   /**
    * The theory's own `delimiter` statement — how the *engine* cuts up math
@@ -157,6 +163,8 @@ const TEMPLATES: Record<string, string> = {
     "a juxtaposed term needs a declared notation, so the engine can read it",
   juxtaposed_duplicate: "sort {sort} already has a juxtaposed combiner",
   elided_target: "@syntax elided must sit on a term with no arguments",
+  refusal_target:
+    "@syntax forbid must sit on a two-place term with an infix notation",
   elided_duplicate: "sort {sort} already has an elided term",
   vars_term_conflict:
     "@vars token {token} is also a declared term; a name can be only one",
@@ -386,7 +394,6 @@ export function parseSpec(source: string): SpecParse {
   const notations: NotationInfo[] = [];
   const elabRules: ElabRule[] = [];
   const lints: LintName[] = [];
-  const assocNone = new Set<number>();
   const delimitersLeft = new Set<string>();
   const delimitersRight = new Set<string>();
   const surfaceLeft = new Set<string>();
@@ -507,6 +514,7 @@ export function parseSpec(source: string): SpecParse {
           isDef: statement.kind === "def",
           juxtaposed: false,
           name: statement.name,
+          refuses: new Set(),
           returnSort,
           roles: [],
           span: statement.span,
@@ -702,8 +710,32 @@ export function parseSpec(source: string): SpecParse {
         break;
       }
 
-      case "assoc-none": {
-        assocNone.add(annotation.prec);
+      case "forbid": {
+        const info =
+          statement.kind === "term" || statement.kind === "def"
+            ? terms.get(statement.name)
+            : undefined;
+
+        // Only an infix two-place term can *have* an unbracketed connective
+        // operand, so anywhere else the annotation would sit and do nothing.
+        if (
+          info === undefined ||
+          regularBinders(info.binders).length !== 2 ||
+          !notations.some(
+            (notation) =>
+              notation.term === info.name &&
+              notation.form === "simple" &&
+              notation.fixity !== "prefix",
+          )
+        ) {
+          report(diagnostics, "refusal_target", {}, span);
+          break;
+        }
+
+        terms.set(info.name, {
+          ...info,
+          refuses: new Set([...info.refuses, ...annotation.relations]),
+        });
         break;
       }
 
@@ -911,7 +943,6 @@ export function parseSpec(source: string): SpecParse {
   }
 
   const spec: Spec = {
-    assocNone,
     coercions,
     delimiters: { left: delimitersLeft, right: delimitersRight },
     display: { dropOuterParens, rotateBrackets },

@@ -65,10 +65,6 @@ export interface ElabRule {
 
 export type SyntaxAnnotation =
   | {
-      readonly kind: "assoc-none";
-      readonly prec: number;
-    }
-  | {
       readonly kind: "brackets";
       readonly pairs: readonly (readonly [string, string])[];
     }
@@ -109,16 +105,49 @@ export type SyntaxAnnotation =
       readonly name: LintName;
     }
   | {
+      /**
+       * `@syntax forbid chain mix nest` — which unbracketed operands this
+       * connective refuses. Unlisted permits, so an unmarked term refuses
+       * nothing, which is the ordinary reading.
+       */
+      readonly kind: "forbid";
+      readonly relations: readonly OperandRelation[];
+    }
+  | {
       readonly kind: "role";
       readonly role: string;
     };
 
+/**
+ * How an unbracketed connective operand sits under the connective above it.
+ *
+ * The three cases are exhaustive. Precedence climbing parses an operand of
+ * an operator at `p` with `min ≥ p` and admits only operators at
+ * `prec ≥ min`, so an unbracketed operand's own operator is never *looser*
+ * than its parent's; and a same-rung operand can only fall on the
+ * associative side, the other side parsing at `p + 1`. There is no fourth
+ * relation to name.
+ */
+export type OperandRelation =
+  /** The same term repeated: `A ∧ B ∧ C`. */
+  | "chain"
+  /** A different term on the same rung: `A ∧ B ∨ C`. */
+  | "mix"
+  /** A term on a tighter rung: `A → B ∧ C`. */
+  | "nest";
+
+const OPERAND_RELATIONS: readonly OperandRelation[] = [
+  "chain",
+  "mix",
+  "nest",
+];
+
 const TEMPLATES: Record<string, string> = {
   syntax_unknown_subcommand: "unknown @syntax subcommand {subcommand}",
   syntax_bad_flag: "@syntax {flag} takes no arguments",
+  syntax_bad_forbid: "@syntax forbid wants one or more of: {known}",
   syntax_bad_brackets:
     "bracket pairs come as: <open> <close> [<open> <close>…]",
-  syntax_bad_assoc_none: "@syntax assoc-none wants one precedence number",
   syntax_unknown_lint: "unknown lint {name}; known lints: {known}",
   syntax_bad_display:
     "@syntax display wants drop-outer-parens or rotate-brackets <pairs…>",
@@ -278,6 +307,25 @@ export function parseSyntaxAnnotation(
       return ok({ kind: subcommand });
     }
 
+    case "forbid": {
+      const relations = words.slice(1);
+
+      if (
+        relations.length === 0 ||
+        !relations.every((relation): relation is OperandRelation =>
+          (OPERAND_RELATIONS as readonly string[]).includes(relation),
+        )
+      ) {
+        return fail(
+          "syntax_bad_forbid",
+          { known: OPERAND_RELATIONS.join(", ") },
+          span,
+        );
+      }
+
+      return ok({ kind: "forbid", relations });
+    }
+
     case "brackets": {
       const pairs = parsePairs(words.slice(1));
 
@@ -305,20 +353,6 @@ export function parseSyntaxAnnotation(
 
       // One list means both sides, as in MM0.
       return ok({ kind: "delimiter", left: first, right: second ?? first });
-    }
-
-    case "assoc-none": {
-      const number = words[1];
-
-      if (
-        words.length !== 2 ||
-        number === undefined ||
-        !/^\d+$/.test(number)
-      ) {
-        return fail("syntax_bad_assoc_none", {}, span);
-      }
-
-      return ok({ kind: "assoc-none", prec: Number.parseInt(number, 10) });
     }
 
     case "lint": {
