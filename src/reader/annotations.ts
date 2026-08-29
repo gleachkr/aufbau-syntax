@@ -99,6 +99,14 @@ export type SyntaxAnnotation =
   | {
       /** Adjacency of this combiner's sort denotes it — `Fxy`, `ab`. */
       readonly kind: "juxtaposed";
+      /**
+       * `@syntax juxtaposed compound`: a parenthesized group may stand as
+       * a glue operand in argument position (`F(x)(y)`, `(lambda x)a`),
+       * not just a single self-delimiting token. Opt-in, because under a
+       * variadic sequence with an elided unit the group is already
+       * spoken for — it is parenthesized application.
+       */
+      readonly compound: boolean;
     }
   | {
       readonly kind: "lint";
@@ -145,6 +153,8 @@ const OPERAND_RELATIONS: readonly OperandRelation[] = [
 const TEMPLATES: Record<string, string> = {
   syntax_unknown_subcommand: "unknown @syntax subcommand {subcommand}",
   syntax_bad_flag: "@syntax {flag} takes no arguments",
+  syntax_bad_juxtaposed:
+    "@syntax juxtaposed takes nothing, or the single flag compound",
   syntax_bad_forbid: "@syntax forbid wants one or more of: {known}",
   syntax_bad_brackets:
     "bracket pairs come as: <open> <close> [<open> <close>…]",
@@ -298,7 +308,18 @@ export function parseSyntaxAnnotation(
   const subcommand = words[0];
 
   switch (subcommand) {
-    case "juxtaposed":
+    case "juxtaposed": {
+      if (words.length === 1) {
+        return ok({ kind: "juxtaposed", compound: false });
+      }
+
+      if (words.length === 2 && words[1] === "compound") {
+        return ok({ kind: "juxtaposed", compound: true });
+      }
+
+      return fail("syntax_bad_juxtaposed", {}, span);
+    }
+
     case "elided": {
       if (words.length !== 1) {
         return fail("syntax_bad_flag", { flag: subcommand }, span);

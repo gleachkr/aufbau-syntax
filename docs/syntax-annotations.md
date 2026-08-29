@@ -166,31 +166,51 @@ parses as `P(snil)`, the 0-ary use of the predicate letter. Printing,
 display drops it again (bare `P`), and engine mode writes it out in full
 (`P (snil)`). One nullary term per sort (validated).
 
-## `juxtaposed`
+## `juxtaposed [compound]`
 
 ```text
 --| @syntax juxtaposed
 term scomma (s t: seq): seq;
 ```
 
-Adjacency of this combiner's sort denotes it. Declared on the sequence
-combiner, it makes a predicate's arguments glue — `Rxy` is `R` applied to
-the sequence `x·y` — the pre-2019 forallx shape. The annotated term must
-be binary and homogeneous (`S × S → S`), must also carry a notation (the
-engine cannot read invisibility — engine mode prints `x , y`), and is
-unique per sort (all validated).
+Adjacency of this combiner's sort denotes it, anywhere. The annotated
+term must be binary and homogeneous (`S × S → S`), must carry an *infix*
+notation — adjacency inherits its precedence and associativity, and the
+engine cannot read invisibility either way (engine mode prints `x , y`)
+— and is unique per sort (all validated).
 
-What glues: single-chunk operands — `@vars` tokens, nullary declared
-names, and nullary notations (an `∅`-style constant) — whose sort coerces
-into the combiner's, consumed greedily. Glue is not this annotation's to
-grant, though: `Rxy` is three operands only if the delimiters already cut
-it into three chunks. A spec that glues declares its letters (see
-`delimiter` above); one that does not gets `R x y`, spaced. Nested
-juxtaposed applications (`Ffxy`) are deliberately not operands yet:
-under variadic sequences they are ambiguous, and that extension is
-deferred. So is free-standing adjacency (`ab` for `a*b` in a group-theory
-spec) — the annotation's meaning is written to cover it, the parser does
-not implement it yet.
+The reading has two faces. In **argument position**, a declared name's
+arguments glue — `Rxy` is `R` applied to the sequence `x·y`, the
+pre-2019 forallx shape. What glues there: single-chunk operands —
+`@vars` tokens, nullary declared names, and nullary notations (an
+`∅`-style constant) — whose sort coerces into the combiner's, consumed
+greedily. **Free-standing**, adjacency of any two expressions of the
+sort is the combiner itself, written as nothing: with a juxtaposed
+product `mul` at `infixl … prec 70`, `ab` is `a*b`, `abc` folds left,
+and `a(bc)` nests right, exactly as the visible operator would. The arc
+never reaches across a written infix, and it is only ever an offer: a
+right-hand side that fails to parse, or to coerce into the combiner's
+sort, simply ends the expression.
+
+Because adjacency *is* the combiner's notation, the notation's
+precedence must sit where a written term-level infix would: **above**
+the predicates over its sort. A product at `prec 70` under an `=` at
+`prec 60` reads `ab=c` as `(ab)=c`; number them the other way around and
+`ab=c` has no parse at all, since the glue slot swallows `b=c` and then
+cannot coerce it.
+
+`@syntax juxtaposed compound` additionally admits a parenthesized group
+as a glue operand in argument position — `F(x)(y)`, `Fa(b)`,
+`(lambda x)a` — folding through the combiner like any other leaf. This
+is opt-in rather than inferred because under a variadic sequence with an
+elided unit (Magnus's `seq`) the group is already spoken for: `P(Q)` is
+parenthesized application, and a second reading of the same text is
+exactly the ambiguity this parser exists to refuse.
+
+Glue is not this annotation's to grant, though: `Rxy` is three operands
+only if the delimiters already cut it into three chunks. A spec that
+glues declares its letters (see `delimiter` above); one that does not
+gets `R x y`, spaced.
 
 This is a *parser* behavior, deliberately not an elab rule: `AxFx`
 versus `Axy` can only be settled by trying the quantifier reading first

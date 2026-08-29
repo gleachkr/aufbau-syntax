@@ -285,11 +285,42 @@ describe("spec validation", () => {
     );
     expect(ids(unnotated)).toEqual(["juxtaposed_needs_notation"]);
 
+    // A prefix notation is not enough either: the adjacency arc inherits
+    // precedence and associativity from an *infix* spelling.
+    const prefixOnly = parseSpec(
+      `${WFF}--| @syntax juxtaposed\nterm both (p q: wff): wff;\nprefix both: $&$ prec 30;`,
+    );
+    expect(ids(prefixOnly)).toEqual(["juxtaposed_needs_notation"]);
+
     const twice = parseSpec(
       `${WFF}--| @syntax juxtaposed\nterm a (p q: wff): wff;\ninfixl a: $+$ prec 30;\n` +
         "--| @syntax juxtaposed\nterm b (p q: wff): wff;\ninfixl b: $*$ prec 40;",
     );
     expect(ids(twice)).toEqual(["juxtaposed_duplicate"]);
+  });
+
+  test("juxtaposed takes the compound flag, and nothing else", () => {
+    const compound = parseSpec(
+      `${WFF}--| @syntax juxtaposed compound\nterm both (p q: wff): wff;\ninfixl both: $&$ prec 30;`,
+    );
+    expect(ids(compound)).toEqual([]);
+    expect(compound.spec.terms.get("both")).toMatchObject({
+      juxtaposed: true,
+      juxtaposedCompound: true,
+    });
+
+    const bare = parseSpec(
+      `${WFF}--| @syntax juxtaposed\nterm both (p q: wff): wff;\ninfixl both: $&$ prec 30;`,
+    );
+    expect(bare.spec.terms.get("both")).toMatchObject({
+      juxtaposed: true,
+      juxtaposedCompound: false,
+    });
+
+    const unknown = parseSpec(
+      `${WFF}--| @syntax juxtaposed nonsense\nterm both (p q: wff): wff;\ninfixl both: $&$ prec 30;`,
+    );
+    expect(ids(unknown)).toEqual(["syntax_bad_juxtaposed"]);
   });
 
   test("elided demands a nullary term, one per sort", () => {

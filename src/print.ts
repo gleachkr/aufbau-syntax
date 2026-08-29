@@ -80,9 +80,44 @@ function render(lang: SurfaceLanguage, term: Term, mode: PrintMode): string {
       return `(${left} ${notation.token} ${right})`;
     }
 
+    const connective = lang.isConnective(term.term);
+
+    // A juxtaposed combiner displays as nothing when it can: `abc` for
+    // `mul(mul(a,b),c)`. An operand is parenthesized when its own
+    // printed form rebinds below what its slot re-parses at — which
+    // covers nesting against the associativity (`a*(bc)`) and, just as
+    // fatally, a loose prefix whose body would swallow what follows
+    // (`(λxx)·y`, where bare `λxxy` reads the `y` into the body). Then
+    // the pieces glue when both can, and the visible token steps back in
+    // when either cannot; either way the display form reparses to the
+    // same tree. A *connective* combiner is left to the full-paren
+    // convention below, which is already stable; invisibly glued
+    // formulas would be unreadable anyway.
+    if (!connective && lang.spec.terms.get(term.term)?.juxtaposed === true) {
+      const prec = typeof notation.prec === "number" ? notation.prec : 0;
+      const slot = (piece: string, arg: Term | undefined, at: number) =>
+        arg !== undefined && printedPrec(lang, arg) < at
+          ? `(${piece})`
+          : piece;
+      const l = slot(
+        left,
+        term.args[0],
+        notation.fixity === "infixl" ? prec : prec + 1,
+      );
+      const r = slot(
+        right,
+        term.args[1],
+        notation.fixity === "infixl" ? prec + 1 : prec,
+      );
+
+      return glueablePiece(lang, l) && glueablePiece(lang, r)
+        ? `${l}${r}`
+        : `${l}${notation.token}${r}`;
+    }
+
     // Connectives are spaced and self-parenthesized (the full-paren
     // convention); term-level infixes close up and stand bare.
-    return lang.isConnective(term.term)
+    return connective
       ? `(${left} ${notation.token} ${right})`
       : `${left}${notation.token}${right}`;
   }
@@ -167,7 +202,6 @@ function renderApplication(
     const combiner = lang.juxtaposedOf.get(sole.sort);
 
     if (combiner !== undefined) {
-      const groupers = lang.spec.groupingPairs.flat();
       const leaves: string[] = [];
       const flatten = (node: Term): void => {
         const at = uncoerced(lang, node);
@@ -188,9 +222,7 @@ function renderApplication(
       // Glue only when every leaf is itself glueable — a single token the
       // parser would consume back. A compound element falls back to the
       // parenthesized form.
-      const simple = leaves.every(
-        (leaf) => !/\s/.test(leaf) && !groupers.some((g) => leaf.includes(g)),
-      );
+      const simple = leaves.every((leaf) => glueablePiece(lang, leaf));
 
       if (simple) {
         return `${term.term}${leaves.join("")}`;
@@ -203,6 +235,48 @@ function renderApplication(
     .join("");
 
   return `${term.term}${args}`;
+}
+
+/**
+ * The precedence at which a term's display form rebinds when it is
+ * re-parsed: its canonical notation's, or the general notation's head
+ * precedence. Self-delimiting forms — variables, lexicon names (which
+ * print as `F(x)`-style application), and connectives (which print
+ * self-parenthesized) — never rebind, and answer infinity.
+ */
+function printedPrec(lang: SurfaceLanguage, term: Term): number {
+  const bare = uncoerced(lang, term);
+
+  if (bare.kind === "variable") {
+    return Number.POSITIVE_INFINITY;
+  }
+
+  const notation = lang.canonical.get(bare.term);
+
+  if (notation === undefined || lang.isConnective(bare.term)) {
+    return Number.POSITIVE_INFINITY;
+  }
+
+  const prec =
+    notation.form === "general"
+      ? notation.literals[0]?.kind === "constant"
+        ? notation.literals[0].prec
+        : "max"
+      : notation.prec;
+
+  return prec === "max" ? Number.POSITIVE_INFINITY : prec;
+}
+
+/**
+ * Whether a printed piece can stand glued against another: no whitespace
+ * and no brackets, so the delimiters re-cut the concatenation into the
+ * same chunks the pieces were printed from.
+ */
+function glueablePiece(lang: SurfaceLanguage, piece: string): boolean {
+  return (
+    !/\s/.test(piece) &&
+    !lang.spec.groupingPairs.flat().some((g) => piece.includes(g))
+  );
 }
 
 /** The term with any coercion wrappers peeled off — what actually prints. */

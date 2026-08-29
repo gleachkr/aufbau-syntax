@@ -62,6 +62,12 @@ export interface TermInfo {
   readonly isDef: boolean;
   /** `@syntax juxtaposed`: adjacency of its sort's leaves denotes it. */
   readonly juxtaposed: boolean;
+  /**
+   * `@syntax juxtaposed compound`: a parenthesized group may stand as a
+   * glue operand in argument position, not just a single token. False
+   * whenever `juxtaposed` is.
+   */
+  readonly juxtaposedCompound: boolean;
   readonly name: string;
   /**
    * `@syntax forbid`: the unbracketed connective operands this term
@@ -160,7 +166,7 @@ const TEMPLATES: Record<string, string> = {
   juxtaposed_target:
     "@syntax juxtaposed must sit on a binary term whose arguments and result share one sort",
   juxtaposed_needs_notation:
-    "a juxtaposed term needs a declared notation, so the engine can read it",
+    "a juxtaposed term needs an infix notation — adjacency inherits its precedence, and the engine cannot read invisibility",
   juxtaposed_duplicate: "sort {sort} already has a juxtaposed combiner",
   elided_target: "@syntax elided must sit on a term with no arguments",
   refusal_target:
@@ -513,6 +519,7 @@ export function parseSpec(source: string): SpecParse {
           foreignAnnotations: foreign,
           isDef: statement.kind === "def",
           juxtaposed: false,
+          juxtaposedCompound: false,
           name: statement.name,
           refuses: new Set(),
           returnSort,
@@ -611,7 +618,17 @@ export function parseSpec(source: string): SpecParse {
           break;
         }
 
-        if (!notations.some((notation) => notation.term === info.name)) {
+        // An *infix* notation specifically: adjacency stands in for the
+        // written operator, so it needs a precedence and an associativity
+        // to inherit — and the engine cannot read invisibility either way.
+        if (
+          !notations.some(
+            (notation) =>
+              notation.term === info.name &&
+              notation.form === "simple" &&
+              notation.fixity !== "prefix",
+          )
+        ) {
           report(diagnostics, "juxtaposed_needs_notation", {}, span);
           break;
         }
@@ -622,7 +639,11 @@ export function parseSpec(source: string): SpecParse {
         }
 
         juxtaposedBySort.set(sort, info.name);
-        terms.set(info.name, { ...info, juxtaposed: true });
+        terms.set(info.name, {
+          ...info,
+          juxtaposed: true,
+          juxtaposedCompound: annotation.compound,
+        });
         break;
       }
 

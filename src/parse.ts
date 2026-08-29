@@ -2,7 +2,7 @@
  * The surface parser: a faithful port of MM0's operator-precedence math
  * parser (mm0.md, "the dynamic parser"), running over the delimiter
  * scanner — MM0's own segmentation rule under a wider, declared delimiter
- * set — with exactly three declared extensions beyond the upstream
+ * set — with exactly four declared extensions beyond the upstream
  * grammar:
  *
  *   1. **Grouping pairs** — `expression(max) → open expression(0) close`
@@ -11,7 +11,11 @@
  *      an unbracketed connective operand of the named shape, whatever
  *      associativity would otherwise allow (`P → Q → R` and `P ∧ Q → R`
  *      are both errors under forallx);
- *   3. **Lints** — the closed set of post-parse checks
+ *   3. **Adjacency** — a sort's `@syntax juxtaposed` combiner is an
+ *      invisible infix operator: two adjacent expressions of its sort
+ *      denote it (`ab` for `a*b`, `gf` for `g∘f`), at the precedence and
+ *      associativity of the combiner's canonical infix notation;
+ *   4. **Lints** — the closed set of post-parse checks
  *      (`parenthesize-binary-only`, `closed-sentences`).
  *
  * Two survivable deviations, both surface-side supersets: a lexicon name
@@ -140,6 +144,13 @@ export class SurfaceLanguage {
   readonly closers = new Set<string>();
   /** Per sort, its `@syntax juxtaposed` combiner — adjacency's meaning. */
   readonly juxtaposedOf = new Map<string, TermInfo>();
+  /**
+   * Per sort, the operator the adjacency arc stands in for: the
+   * combiner's canonical (last-declared) infix notation's entry. The arc
+   * is that operator, written as nothing — same precedence, same
+   * associativity — which is what keeps `ab⁻¹` and `a*b⁻¹` one tree.
+   */
+  readonly adjacencyOf = new Map<string, InfixEntry>();
   /** Per sort, its `@syntax elided` term — the unwritten argument. */
   readonly elidedOf = new Map<string, TermInfo>();
   /** Sorts some quantifier binds — whose variables *can* be captured. */
@@ -262,6 +273,25 @@ export class SurfaceLanguage {
 
     for (const notation of spec.notations) {
       this.canonical.set(notation.term, notation);
+    }
+
+    // Later notations overwrite earlier ones, so each sort's arc ends up
+    // borrowing from the combiner's *last-declared* infix spelling — the
+    // canonical one, Aufbau's rule everywhere else.
+    for (const [sort, info] of this.juxtaposedOf) {
+      for (const notation of spec.notations) {
+        if (
+          notation.term === info.name &&
+          notation.form === "simple" &&
+          notation.fixity !== "prefix"
+        ) {
+          const entry = this.infixes.get(notation.token);
+
+          if (entry !== undefined) {
+            this.adjacencyOf.set(sort, entry);
+          }
+        }
+      }
     }
 
     for (const coercion of spec.coercions) {
@@ -419,11 +449,20 @@ export class SurfaceLanguage {
         lints,
         sort,
         scope,
+        mode,
       ).run();
     }
 
     if (this.spec.elabRules.length === 0) {
-      return new Parse(this, this.scanner, text, lints, sort, scope).run();
+      return new Parse(
+        this,
+        this.scanner,
+        text,
+        lints,
+        sort,
+        scope,
+        mode,
+      ).run();
     }
 
     // Elaborate first, then map every span in the outcome back through
@@ -436,6 +475,7 @@ export class SurfaceLanguage {
       lints,
       sort,
       scope,
+      mode,
     ).run();
     const diagnostics = result.diagnostics.map((diag) => ({
       ...diag,
@@ -480,6 +520,8 @@ class Parse {
     private readonly sort: string | null,
     /** The enclosing theorem's binders, shadowing the lexicon. */
     private readonly scope: Scope,
+    /** Engine text writes every operator, so the adjacency arc is off. */
+    private readonly mode: ParseMode,
   ) {}
 
   /** The scan point at `position`, classified in this parse's scope. */
@@ -595,6 +637,24 @@ class Parse {
     return result;
   }
 
+  /**
+   * An `attempt` whose failure leaves no trace in `bestTrialFailure`.
+   * For trials that fail routinely on perfectly good input — every
+   * expression ends somewhere, so most adjacency offers are declined — a
+   * diagnostic from one must never displace the error the writer
+   * actually made.
+   */
+  private attemptQuiet<T>(body: () => T | null): T | null {
+    const saved = this.bestTrialFailure;
+    const result = this.attempt(body);
+
+    if (result === null) {
+      this.bestTrialFailure = saved;
+    }
+
+    return result;
+  }
+
   private coerceTerm(term: Term, target: string): Term | null {
     const path = this.lang.coerce(term.sort, target);
 
@@ -654,15 +714,25 @@ class Parse {
       }
 
       const reading = point.readings.find((r) => r.kind === "token");
+      const entry =
+        reading !== undefined && reading.kind === "token"
+          ? this.lang.infixes.get(reading.token)
+          : undefined;
 
-      if (reading === undefined || reading.kind !== "token") {
-        return left;
-      }
+      if (reading === undefined || entry === undefined || entry.prec < min) {
+        // No operator readable here. Adjacency may still continue the
+        // expression — but never *across* a written infix: an operator
+        // the writer spelled out, even one too loose for this slot, is
+        // theirs, and gluing past it would silently reparse the input.
+        const glued: Term | null =
+          entry === undefined ? this.glueAdjacent(left, min) : null;
 
-      const entry = this.lang.infixes.get(reading.token);
+        if (glued === null) {
+          return left;
+        }
 
-      if (entry === undefined || entry.prec < min) {
-        return left;
+        left = glued;
+        continue;
       }
 
       this.position = point.start + reading.length;
@@ -697,6 +767,98 @@ class Parse {
         token: reading.token,
       } satisfies AppTerm;
     }
+  }
+
+  /**
+   * The adjacency arc: continue `left` through its sort's `@syntax
+   * juxtaposed` combiner without an operator having been written — `ab`
+   * for `a*b`, `gf` for `g∘f`. The arc is the combiner's canonical infix
+   * notation spelled as nothing, so it binds exactly as the written
+   * operator would ({@link SurfaceLanguage.adjacencyOf}); the sort guard
+   * is what keeps two adjacent *formulas* apart in a spec whose combiner
+   * lives at the term level.
+   *
+   * Offered, never insisted on: the right-hand side runs under a quiet
+   * attempt, and any failure — nothing parseable there, a sort that will
+   * not coerce — just ends the expression with the diagnostics as they
+   * were. Surface mode only; engine text writes every operator and an
+   * arc there could only misread.
+   */
+  private glueAdjacent(left: Term, min: number): Term | null {
+    if (this.mode === "engine" || this.lang.adjacencyOf.size === 0) {
+      return null;
+    }
+
+    const point = this.at(this.position);
+
+    if (
+      point.atEnd ||
+      !point.readings.some((reading) => this.isViablePrimary(reading))
+    ) {
+      return null;
+    }
+
+    // Candidate combiners nearest coercion first, so a leaf eligible for
+    // two sorts glues at the closest one — deterministic, like every
+    // other ordered alternative in this parser.
+    const candidates = [...this.lang.adjacencyOf.entries()]
+      .map(([sort, entry]) => ({
+        entry,
+        path: this.lang.coerce(left.sort, sort),
+      }))
+      .filter(
+        (
+          candidate,
+        ): candidate is { entry: InfixEntry; path: readonly string[] } =>
+          candidate.path !== null,
+      )
+      .sort((a, b) => a.path.length - b.path.length);
+
+    for (const { entry } of candidates) {
+      if (entry.prec < min) {
+        continue;
+      }
+
+      const glued = this.attemptQuiet(() => this.glueRight(left, entry));
+
+      if (glued !== null) {
+        return glued;
+      }
+    }
+
+    return null;
+  }
+
+  /** One adjacency trial: the invisible operator's right-hand side. */
+  private glueRight(left: Term, entry: InfixEntry): Term | null {
+    const right = this.parseExpr(
+      entry.fixity === "infixl" ? entry.prec + 1 : entry.prec,
+    );
+
+    if (right === null) {
+      return null;
+    }
+
+    const binders = entry.info.binders;
+    const coercedLeft = this.coerceTerm(left, binderSort(binders[0]));
+    const coercedRight = this.coerceTerm(right, binderSort(binders[1]));
+
+    if (coercedLeft === null || coercedRight === null) {
+      return null;
+    }
+
+    return {
+      kind: "app",
+      term: entry.info.name,
+      args: [coercedLeft, coercedRight],
+      sort: entry.info.returnSort,
+      span: { start: left.span.start, end: right.span.end },
+      grouped: false,
+      fixity: entry.fixity,
+      prec: entry.prec,
+      // Nothing was written: the printer must not claim a token was.
+      token: null,
+    };
   }
 
   private parsePrimary(min: number): Term | null {
@@ -1108,6 +1270,10 @@ class Parse {
 
     for (const binder of argBinders) {
       const target = binderSort(binder);
+      const combiner =
+        argBinders.length === 1
+          ? this.lang.juxtaposedOf.get(target)
+          : undefined;
       const point = this.at(this.position);
       const open = this.lang.spec.groupingPairs[0]?.[0] ?? "(";
       const close = this.lang.spec.groupingPairs[0]?.[1] ?? ")";
@@ -1115,7 +1281,14 @@ class Parse {
         (r) => r.kind === "token" && r.token === open,
       );
 
-      if (openReading !== undefined) {
+      // Under a *compound* combiner a leading `(` is not application
+      // syntax but the first glue operand, so the glue loop below owns
+      // it — that is what lets `F(x)(y)` fold instead of stranding the
+      // second group.
+      if (
+        openReading !== undefined &&
+        combiner?.juxtaposedCompound !== true
+      ) {
         this.position = point.start + openReading.length;
 
         const arg = this.parseExpr(0);
@@ -1153,19 +1326,15 @@ class Parse {
       }
 
       // Juxtaposed gluing — `Fxy`, the pre-2019 forallx shape. Operands
-      // (self-delimiting single-token expressions) are consumed greedily
-      // while they coerce into the argument sort; several fold through
-      // the sort's declared combiner.
-      const combiner =
-        argBinders.length === 1
-          ? this.lang.juxtaposedOf.get(target)
-          : undefined;
-
+      // (self-delimiting single-token expressions, plus parenthesized
+      // groups under a compound combiner) are consumed greedily while
+      // they coerce into the argument sort; several fold through the
+      // sort's declared combiner.
       if (combiner !== undefined) {
         const leaves: Term[] = [];
 
         for (;;) {
-          const leaf = this.glueOperand(target);
+          const leaf = this.glueOperand(target, combiner.juxtaposedCompound);
 
           if (leaf === null) {
             break;
@@ -1241,14 +1410,36 @@ class Parse {
    * One juxtaposed operand: a self-delimiting single-token expression — a
    * variable, a nullary lexicon name, or a nullary notation (an
    * empty-set-style constant) — whose sort coerces into the target.
-   * Anything larger (a parenthesized group, a term applied to arguments
-   * of its own) is deliberately not an operand yet: nested juxtaposition
-   * is ambiguous under variadic sequences and stays deferred.
+   *
+   * Under `@syntax juxtaposed compound`, a parenthesized group is an
+   * operand too — `F(x)(y)`, `(lambda x)a`. That stays opt-in rather
+   * than general because under a variadic sequence with an elided unit
+   * (Magnus's `seq`) a group is already spoken for: `P(Q)` is
+   * parenthesized application, and a second reading of the same text is
+   * exactly the ambiguity this parser exists to refuse.
    */
-  private glueOperand(target: string): Term | null {
+  private glueOperand(target: string, compound: boolean): Term | null {
     const point = this.at(this.position);
 
     for (const reading of point.readings) {
+      if (compound && reading.kind === "token") {
+        const close = this.lang.closeOf.get(reading.token);
+
+        if (close !== undefined) {
+          const group = this.attemptQuiet(() => {
+            const inner = this.parseGroup(point.start, close, reading.length);
+
+            return inner === null ? null : this.coerceTerm(inner, target);
+          });
+
+          if (group !== null) {
+            return group;
+          }
+
+          continue;
+        }
+      }
+
       if (reading.kind === "name") {
         if (reading.ref.kind === "var") {
           if (this.lang.coerce(reading.ref.sort, target) === null) {

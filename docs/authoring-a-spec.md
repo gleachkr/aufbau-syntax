@@ -179,9 +179,12 @@ for its turn: undeclare the letters and spell adjacency out.
 
 7. **Juxtaposition, if the book glues** — one annotation on the sequence
    combiner (`--| @syntax juxtaposed` on `scomma`): adjacency at `seq`
-   then denotes it, and `Rxy` parses. Nothing is said per letter — but
-   the letters must be delimiters, or there is no adjacency to read: it
-   takes step 1 and step 7 together.
+   then denotes it, and `Rxy` parses — as does free-standing adjacency
+   anywhere an expression of the sort stands (`ab` for `a*b` in an
+   algebra spec), at the combiner's own infix precedence, which must
+   therefore sit *above* the predicates over its sort. Nothing is said
+   per letter — but the letters must be delimiters, or there is no
+   adjacency to read: it takes step 1 and step 7 together.
 
 8. **Sugar by definition.** `a ≠ b` is a `def` whose definiens is the
    negated identity — the tree holds `neq`, consumers may unfold, and the

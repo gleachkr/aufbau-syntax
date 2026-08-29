@@ -2,6 +2,35 @@
 
 ## Unreleased
 
+**Free-standing adjacency.** `@syntax juxtaposed` is now read in its full
+generality: adjacency of two expressions of the combiner's sort denotes
+the combiner *anywhere*, not only in argument position of a declared name.
+With a juxtaposed product `mul` spelled `infixl … prec 70`, `ab` is `a*b`,
+`abc` folds left, and `a(bc)` nests right — the arc is the combiner's
+canonical infix notation written as nothing, at the same precedence and
+associativity, which is why that notation is now required to be infix
+(previously any notation satisfied the validator). The arc never reaches
+across a written operator, and it is only an offer: a right-hand side
+that fails to parse or to coerce simply ends the expression, without
+disturbing the diagnostics. Consequence for spec authors: the combiner's
+precedence must sit above the predicates over its sort (`*` at 70 over
+`=` at 60), just as any written term-level infix must.
+
+Display mode prints the combiner invisibly when the glued form would
+reparse to the same tree, parenthesizes an operand whose own notation
+rebinds below its slot — nesting against the associativity (`a*(bc)`),
+or a loose prefix whose body would swallow what follows (`(λxx)·y`) —
+and falls back to the visible token otherwise; engine mode writes the
+operator out in full, as before.
+
+**`@syntax juxtaposed compound`.** An opt-in flag admitting parenthesized
+groups as glue operands in argument position — `F(x)(y)`, `(lambda x)a` —
+folding through the combiner like any other leaf. Opt-in rather than
+inferred, because under a variadic sequence with an elided unit (Magnus's
+`seq`) a group is already parenthesized application, and a second reading
+of the same text is exactly the ambiguity this parser exists to refuse.
+`TermInfo` gains a `juxtaposedCompound` field.
+
 **A connective says which unbracketed operands it refuses.** A new per-term
 `@syntax forbid <relation>…` annotation, replacing `@syntax assoc-none
 <prec>`, which is gone. An operand that is itself an
