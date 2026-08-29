@@ -1,6 +1,6 @@
 {
   "name": "@aufbau/syntax",
-  "version": "0.0.4",
+  "version": "0.0.5",
   "description": "Surface syntax over MM0: a statement reader, a delimiter scanner, a faithful math-string parser, a pretty-printer, and a bidirectional token-elaboration layer for textbook logical notations.",
   "license": "Apache-2.0",
   "repository": {
