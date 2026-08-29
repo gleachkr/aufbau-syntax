@@ -15,8 +15,8 @@ classroom:
   (`∀xF(x)`, `Fxyz`, `~~P`), alias spellings, per-textbook bracket and
   parenthesization conventions;
 - a **display language**: canonical pretty-printing with the textbook's own
-  conventions (dropped outer parentheses, juxtaposed arguments, rotated
-  brackets).
+  conventions (dropped outer parentheses, juxtaposed arguments and
+  products).
 
 Everything a student types is parsed into a term tree over the declared
 signature and can be printed back out — either sugared for display, or in
@@ -50,7 +50,7 @@ One spec file per textbook system; no code per system.
    set of lints, per-connective `forbid` lists refusing unbracketed
    operands, and per-term `elided` (bare `P` is
    `P(snil)`) and `juxtaposed` (adjacency at a sort denotes its combiner —
-   `Rxy`) flags.
+   `Rxy` in argument position, `ab` for `a*b` free-standing) flags.
 5. **Printer** — last-declared notation is canonical; minimal parentheses
    by precedence; display options; invertible elab rules delaborate.
 

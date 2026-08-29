@@ -1,6 +1,6 @@
 # Changelog
 
-## Unreleased
+## 0.0.5
 
 **Free-standing adjacency.** `@syntax juxtaposed` is now read in its full
 generality: adjacency of two expressions of the combiner's sort denotes
@@ -77,7 +77,7 @@ infix notation — anywhere else it would do nothing — which is validated.
 nest` and leaves `and`/`or` untouched, so `P ∧ Q ∨ R` still reads as `(P ∧ Q) ∨ R`
 while `P ∧ Q → R` now wants its brackets, as the textbook does.
 
-## 0.0.4
+## 0.0.4 — 2026-08-26
 
 **A parse can be given the enclosing theorem's binder scope.**
 `parse(text, { scope })` takes a `Map` of name to sort. A name in scope
@@ -122,7 +122,7 @@ Aufbau compiler, so the claim that our scoped emission is what the engine
 reads inside those binders is checked against the engine rather than
 asserted.
 
-## 0.0.3
+## 0.0.3 — 2026-08-25
 
 **The sort input is read at is a `parse` argument.**
 `parse(text, { sort })` names it; the text must parse to that sort or
