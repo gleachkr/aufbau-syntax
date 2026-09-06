@@ -87,6 +87,20 @@ export interface CoercionInfo {
   readonly to: string;
 }
 
+/**
+ * An axiom or theorem, as far as the surface layer is concerned: a name a
+ * proof cites, and the `@syntax alias` names it may cite it by instead. The
+ * statement itself passes through opaque, on `Spec.statements`.
+ */
+export interface RuleInfo {
+  /** In declaration order; never contains the rule's own name. */
+  readonly aliases: readonly string[];
+  readonly foreignAnnotations: readonly Annotation[];
+  readonly kind: "axiom" | "theorem";
+  readonly name: string;
+  readonly span: Span;
+}
+
 export type NotationInfo =
   | {
       readonly form: "general";
@@ -122,6 +136,15 @@ export interface Spec {
   /** In declaration order; the last notation for a term is canonical. */
   readonly notations: readonly NotationInfo[];
   readonly elabRules: readonly ElabRule[];
+  /**
+   * Alias to the rule it names, over every `@syntax alias` in the spec —
+   * the one lookup a proof reader needs: `ruleAliases.get(cited) ?? cited`
+   * is what to hand the engine. Canonical names are not keys; a name that
+   * is not an alias is already the engine's.
+   */
+  readonly ruleAliases: ReadonlyMap<string, string>;
+  /** Every axiom and theorem, keyed by name. */
+  readonly rules: ReadonlyMap<string, RuleInfo>;
   readonly sorts: ReadonlyMap<string, SortInfo>;
   /** Every statement, in order, annotations intact — full fidelity. */
   readonly statements: readonly Statement[];
@@ -175,6 +198,10 @@ const TEMPLATES: Record<string, string> = {
   vars_term_conflict:
     "@vars token {token} is also a declared term; a name can be only one",
   role_target: "@syntax role must sit on a sort or a term",
+  alias_target: "@syntax alias must sit on an axiom or a theorem",
+  alias_is_rule_name:
+    "{alias} is already the name of a rule, so it cannot be an alias",
+  alias_duplicate: "{alias} already names {rule}",
   delimiter_unknown:
     "delimiter {token} is neither a notation token, a bracket, nor a lexicon name, so no input can ever be read as it",
   delimiter_token_not_delimited:
@@ -397,6 +424,8 @@ export function parseSpec(source: string): SpecParse {
   const sorts = new Map<string, SortInfo>();
   const terms = new Map<string, TermInfo>();
   const coercions: CoercionInfo[] = [];
+  const rules = new Map<string, RuleInfo>();
+  const ruleAliases = new Map<string, string>();
   const notations: NotationInfo[] = [];
   const elabRules: ElabRule[] = [];
   const lints: LintName[] = [];
@@ -587,8 +616,28 @@ export function parseSpec(source: string): SpecParse {
       }
 
       case "axiom":
-      case "theorem":
+      case "theorem": {
+        // The engine refuses a second declaration of a name; recording it
+        // once here keeps the alias table from ever being ambiguous.
+        if (rules.has(statement.name)) {
+          report(
+            diagnostics,
+            "duplicate_declaration",
+            { name: statement.name },
+            statement.span,
+          );
+          break;
+        }
+
+        rules.set(statement.name, {
+          aliases: [],
+          foreignAnnotations: foreign,
+          kind: statement.kind,
+          name: statement.name,
+          span: statement.span,
+        });
         break;
+      }
     }
   }
 
@@ -697,6 +746,49 @@ export function parseSpec(source: string): SpecParse {
           terms.set(statement.name, {
             ...info,
             roles: [...info.roles, annotation.role],
+          });
+        }
+        break;
+      }
+
+      case "alias": {
+        const info =
+          statement.kind === "axiom" || statement.kind === "theorem"
+            ? rules.get(statement.name)
+            : undefined;
+
+        if (info === undefined) {
+          report(diagnostics, "alias_target", {}, span);
+          break;
+        }
+
+        for (const alias of annotation.names) {
+          // A proof citing this name must mean one rule. The rule's own
+          // name is the engine's, and another rule's alias is taken.
+          if (rules.has(alias)) {
+            report(diagnostics, "alias_is_rule_name", { alias }, span);
+            continue;
+          }
+
+          const owner = ruleAliases.get(alias);
+
+          if (owner !== undefined) {
+            if (owner !== info.name) {
+              report(
+                diagnostics,
+                "alias_duplicate",
+                { alias, rule: owner },
+                span,
+              );
+            }
+            continue;
+          }
+
+          ruleAliases.set(alias, info.name);
+          const current = rules.get(info.name) ?? info;
+          rules.set(info.name, {
+            ...current,
+            aliases: [...current.aliases, alias],
           });
         }
         break;
@@ -971,6 +1063,8 @@ export function parseSpec(source: string): SpecParse {
     lints,
     notations,
     elabRules,
+    ruleAliases,
+    rules,
     sorts,
     statements,
     // The union: what the engine splits on, plus what the textbook does.

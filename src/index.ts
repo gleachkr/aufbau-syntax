@@ -36,6 +36,7 @@ export type {
 export type {
   CoercionInfo,
   NotationInfo,
+  RuleInfo,
   SortInfo,
   Spec,
   SpecParse,

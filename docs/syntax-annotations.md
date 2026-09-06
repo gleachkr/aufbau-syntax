@@ -17,6 +17,7 @@ Attachment rules:
 | `juxtaposed` | a binary term whose arguments and result share one sort |
 | `elided` | a nullary term |
 | `role` | a `sort`, a `term`, or a `def` |
+| `alias` | an `axiom` or a `theorem` |
 | everything else | any statement — the effect is spec-wide |
 
 ## The lexicon needs no `@syntax` at all
@@ -424,3 +425,39 @@ language.parse(text, { sort: sentence ?? undefined });
 
 That keeps the choice where it belongs — in the spec, which is data —
 without the library privileging one sort name.
+
+## `alias <name>…`
+
+```text
+--| @syntax alias ∧I &I ^I
+axiom and_intro (ga: ctx) (ph ps: wff): $ ga ⊢ ph $ > $ ga ⊢ ps $ > $ ga ⊢ ph ∧ ps $;
+```
+
+Further names a proof may cite the rule by. MM0 identifiers are ASCII, so
+a textbook's `∧I` can never be the axiom's own name; the alias is the
+surface name for it, the way a notation is the surface spelling of a
+term. Several aliases on one rule, and several `alias` lines, both read;
+the alias is a whitespace-free token by construction, which is the shape
+a citation has wherever a proof line is read.
+
+The reader records them on `RuleInfo.aliases` (`Spec.rules`, every axiom
+and theorem keyed by name) and inverts them once into `Spec.ruleAliases`,
+alias to rule. That map is the whole consumer contract:
+
+```ts
+const rule = spec.ruleAliases.get(cited) ?? cited; // what the engine sees
+```
+
+A canonical name is never a key, so a citation that is already the
+engine's passes through unchanged, and an unknown name reaches the engine
+to be refused there, spelled as the student wrote it. The library
+resolves nothing itself: a proof format is a consumer's, not the spec's.
+
+What the reader checks: an alias must mean exactly one rule. A name any
+rule already has (`alias_is_rule_name`) and an alias another rule already
+claimed (`alias_duplicate`, the first owner keeps it) are both refused;
+so is a second declaration of one rule name (`duplicate_declaration`),
+which the engine would refuse anyway and which would leave the table
+unable to say which declaration an alias meant. Repeating an alias on its
+own rule is idle. An `alias` line on anything but an axiom or theorem is
+`alias_target`.

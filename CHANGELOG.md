@@ -1,5 +1,22 @@
 # Changelog
 
+## Unreleased
+
+**A rule can carry the names a proof cites it by.** A new per-rule
+`@syntax alias <name>…` annotation, attached to an `axiom` or a
+`theorem`. MM0 identifiers are ASCII, so a textbook's `∧I` was never
+going to be the axiom's own name; the alias is the surface name for the
+rule, as a notation is the surface spelling of a term, and it is a
+whitespace-free token by construction — the shape a citation has wherever
+a proof line is read. `Spec` gains `rules` (every axiom and theorem, keyed
+by name, with a `RuleInfo` carrying its `aliases`) and `ruleAliases`, the
+inverted map that is the whole consumer contract:
+`spec.ruleAliases.get(cited) ?? cited` is what to hand the engine. The
+library resolves nothing itself. The reader refuses an alias that is any
+rule's name (`alias_is_rule_name`), one another rule already claimed
+(`alias_duplicate`), and — new — a second declaration of one rule name
+(`duplicate_declaration`), which the engine refuses too.
+
 ## 0.0.5
 
 **Free-standing adjacency.** `@syntax juxtaposed` is now read in its full

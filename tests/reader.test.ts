@@ -351,6 +351,81 @@ describe("spec validation", () => {
     expect(spec.terms.get("bot")?.roles).toEqual(["falsum"]);
   });
 
+  test("an alias is a further name a proof may cite a rule by", () => {
+    const { spec, diagnostics } = parseSpec(
+      `${WFF}term t: wff;
+--| @syntax alias ∧I &I
+axiom and_intro: $ t $;
+--| @syntax alias ∧E
+--| @syntax alias ^E
+theorem and_elim: $ t $;
+axiom plain: $ t $;`,
+    );
+    expect(diagnostics).toEqual([]);
+    expect([...spec.rules.keys()]).toEqual([
+      "and_intro",
+      "and_elim",
+      "plain",
+    ]);
+    expect(spec.rules.get("and_intro")?.aliases).toEqual(["∧I", "&I"]);
+    expect(spec.rules.get("and_elim")?.aliases).toEqual(["∧E", "^E"]);
+    expect(spec.rules.get("and_elim")?.kind).toBe("theorem");
+    expect(spec.rules.get("plain")?.aliases).toEqual([]);
+    expect([...spec.ruleAliases]).toEqual([
+      ["∧I", "and_intro"],
+      ["&I", "and_intro"],
+      ["∧E", "and_elim"],
+      ["^E", "and_elim"],
+    ]);
+    // The lookup a proof reader makes: an alias resolves, a name stands.
+    expect(spec.ruleAliases.get("∧I") ?? "∧I").toBe("and_intro");
+    expect(spec.ruleAliases.get("and_intro") ?? "and_intro").toBe(
+      "and_intro",
+    );
+  });
+
+  test("an alias must mean exactly one rule", () => {
+    const onTerm = parseSpec(`${WFF}--| @syntax alias t'\nterm t: wff;`);
+    expect(ids(onTerm)).toEqual(["alias_target"]);
+
+    const empty = parseSpec(
+      `${WFF}term t: wff;\n--| @syntax alias\naxiom a: $ t $;`,
+    );
+    expect(ids(empty)).toEqual(["syntax_bad_alias"]);
+
+    // A rule's name is the engine's; aliasing it, from any rule, is refused.
+    const ownName = parseSpec(
+      `${WFF}term t: wff;\naxiom b: $ t $;\n--| @syntax alias a b\naxiom a: $ t $;`,
+    );
+    expect(ids(ownName)).toEqual([
+      "alias_is_rule_name",
+      "alias_is_rule_name",
+    ]);
+    expect(ownName.spec.rules.get("a")?.aliases).toEqual([]);
+
+    // The same alias on two rules keeps its first owner.
+    const shared = parseSpec(
+      `${WFF}term t: wff;\n--| @syntax alias X\naxiom a: $ t $;\n--| @syntax alias X\naxiom b: $ t $;`,
+    );
+    expect(ids(shared)).toEqual(["alias_duplicate"]);
+    expect(shared.spec.ruleAliases.get("X")).toBe("a");
+    expect(shared.spec.rules.get("b")?.aliases).toEqual([]);
+
+    // Repeating an alias on its own rule is idle, not a conflict.
+    const repeated = parseSpec(
+      `${WFF}term t: wff;\n--| @syntax alias X X\naxiom a: $ t $;`,
+    );
+    expect(ids(repeated)).toEqual([]);
+    expect(repeated.spec.rules.get("a")?.aliases).toEqual(["X"]);
+
+    // Two declarations of one rule name: the engine refuses it, and so
+    // does the index, which would otherwise not know which one an alias meant.
+    const twice = parseSpec(
+      `${WFF}term t: wff;\naxiom a: $ t $;\naxiom a: $ t $;`,
+    );
+    expect(ids(twice)).toEqual(["duplicate_declaration"]);
+  });
+
   test("a @vars token cannot also be a declared term", () => {
     const conflict = parseSpec(`--| @vars a b\nsort wff;\nterm a: wff;`);
     expect(ids(conflict)).toEqual(["vars_term_conflict"]);

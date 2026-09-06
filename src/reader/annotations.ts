@@ -15,6 +15,8 @@
  *   - `elided` attaches to a nullary term (supplied when an argument of
  *     its sort is missing, dropped again when printing);
  *   - `role` attaches to a `sort`, a `term`, or a `def`;
+ *   - `alias` attaches to an `axiom` or a `theorem` (the names a proof may
+ *     cite it by, since the engine's identifiers are ASCII);
  *   - everything else is spec-wide and may sit on any statement.
  *
  * The lexicon itself needs no `@syntax` at all: letters are ordinary term
@@ -64,6 +66,17 @@ export interface ElabRule {
 }
 
 export type SyntaxAnnotation =
+  | {
+      /**
+       * `@syntax alias ∧I &I` — further names a proof may cite this rule
+       * by. MM0 identifiers are ASCII, so a textbook's `∧I` can never be
+       * the axiom's own name; the aliases are surface names for it, one
+       * whitespace-free token each, resolved by a consumer before the
+       * citation reaches the engine.
+       */
+      readonly kind: "alias";
+      readonly names: readonly string[];
+    }
   | {
       readonly kind: "brackets";
       readonly pairs: readonly (readonly [string, string])[];
@@ -169,6 +182,7 @@ const TEMPLATES: Record<string, string> = {
   syntax_bad_pattern_element: "cannot read pattern element {element}",
   syntax_bad_template_element: "cannot read template element {element}",
   syntax_bad_role: "@syntax role wants one role name",
+  syntax_bad_alias: "@syntax alias wants one or more names",
 };
 
 function fail(
@@ -452,6 +466,18 @@ export function parseSyntaxAnnotation(
       }
 
       return ok({ kind: "role", role });
+    }
+
+    case "alias": {
+      // Whitespace-split, so an alias is one token by construction: that
+      // is the shape a proof line's citation has anywhere it is read.
+      const names = words.slice(1);
+
+      if (names.length === 0) {
+        return fail("syntax_bad_alias", {}, span);
+      }
+
+      return ok({ kind: "alias", names });
     }
 
     default:
