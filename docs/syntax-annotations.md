@@ -424,7 +424,11 @@ language.parse(text, { sort: sentence ?? undefined });
 ```
 
 That keeps the choice where it belongs — in the spec, which is data —
-without the library privileging one sort name.
+without the library privileging one sort name. The same shape serves a
+consumer that evaluates terms: Carnap marks the sort a textbook's variadic
+letters take their argument list in (`@syntax role argument-list` on
+`seq`) and flattens a node of that sort by structure, so it never needs
+the comma's name.
 
 A role may sit on a **rule** as well, on `RuleInfo.roles`, for what a
 consumer needs to know about a rule beyond its name. A proof editor that
