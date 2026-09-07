@@ -78,7 +78,12 @@ export interface DefStatement extends StatementBase {
   readonly kind: "def";
   readonly name: string;
   readonly binders: readonly Binder[];
-  readonly returnType: TypeRef;
+  /**
+   * The `:`-side arrow chain; the last entry is the return type. mm0.md
+   * gives `def` a plain type here, but the reference examples (hol.mm0's
+   * `def all: type > term`) use the arrow sugar as on a `term`.
+   */
+  readonly returnChain: readonly TypeRef[];
   /** Absent on a bodyless def (definiens supplied by the proof file). */
   readonly definiens: MathString | null;
 }
@@ -114,6 +119,18 @@ export interface CoercionStatement extends StatementBase {
   readonly to: string;
 }
 
+/**
+ * An `input` or `output` statement — mm0.md's optional verifier I/O,
+ * `output string: $ hello $;`. Read so a file that has one still reads;
+ * the items are the verifier's business and are carried, not interpreted.
+ */
+export interface InOutStatement extends StatementBase {
+  readonly kind: "input" | "output";
+  /** The I/O kind identifier, e.g. `string`, `s_expr`. */
+  readonly ioKind: string;
+  readonly items: readonly (MathString | string)[];
+}
+
 export interface GenNotationStatement extends StatementBase {
   readonly kind: "notation";
   readonly term: string;
@@ -128,6 +145,7 @@ export type Statement =
   | DefStatement
   | DelimiterStatement
   | GenNotationStatement
+  | InOutStatement
   | SimpleNotationStatement
   | SortStatement
   | TermStatement;
@@ -507,20 +525,8 @@ function parseStatement(
       if (binders === null) return null;
       if (!cursor.expectSymbol(":")) return null;
 
-      const returnChain: TypeRef[] = [];
-
-      for (;;) {
-        const type = parseTypeRef(cursor);
-        if (type === null) return null;
-        returnChain.push(type);
-
-        const arrow = cursor.peek();
-        if (arrow !== null && arrow.kind === "symbol" && arrow.text === ">") {
-          cursor.next();
-          continue;
-        }
-        break;
-      }
+      const returnChain = parseArrowChain(cursor);
+      if (returnChain === null) return null;
 
       return finish({
         ...base(cursor.hereSpan()),
@@ -542,8 +548,8 @@ function parseStatement(
       if (binders === null) return null;
       if (!cursor.expectSymbol(":")) return null;
 
-      const returnType = parseTypeRef(cursor);
-      if (returnType === null) return null;
+      const returnChain = parseArrowChain(cursor);
+      if (returnChain === null) return null;
 
       let definiens: MathString | null = null;
       const eq = cursor.peek();
@@ -559,7 +565,7 @@ function parseStatement(
         kind: "def",
         name,
         binders,
-        returnType,
+        returnChain,
         definiens,
       });
     }
@@ -784,6 +790,42 @@ function parseStatement(
       });
     }
 
+    case "input":
+    case "output": {
+      const ioKind = cursor.expectIdentifier();
+      if (ioKind === null) return null;
+      if (!cursor.expectSymbol(":")) return null;
+
+      const items: (MathString | string)[] = [];
+
+      for (;;) {
+        const token = cursor.peek();
+
+        if (token === null) break;
+
+        if (token.kind === "math") {
+          cursor.next();
+          items.push({ span: token.span, text: token.text });
+          continue;
+        }
+
+        if (token.kind === "identifier") {
+          cursor.next();
+          items.push(token.text);
+          continue;
+        }
+
+        break;
+      }
+
+      return finish({
+        ...base(cursor.hereSpan()),
+        kind: keyword.text,
+        ioKind,
+        items,
+      });
+    }
+
     default:
       cursor.report(
         "unknown_statement",
@@ -792,6 +834,26 @@ function parseStatement(
       );
       return null;
   }
+}
+
+/** `type ('>' type)*` — the arrow sugar on a `term` or `def` return. */
+function parseArrowChain(cursor: Cursor): TypeRef[] | null {
+  const chain: TypeRef[] = [];
+
+  for (;;) {
+    const type = parseTypeRef(cursor);
+    if (type === null) return null;
+    chain.push(type);
+
+    const arrow = cursor.peek();
+    if (arrow !== null && arrow.kind === "symbol" && arrow.text === ">") {
+      cursor.next();
+      continue;
+    }
+    break;
+  }
+
+  return chain;
 }
 
 export function parseStatements(source: string): StatementParse {

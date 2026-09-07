@@ -49,7 +49,47 @@ export function printTerm(
     printed = delaborate(lang, printed);
   }
 
+  if (mode === "engine") {
+    printed = spaceGrouping(lang, printed);
+  }
+
   return printed;
+}
+
+/**
+ * mm0.md splits a math string on whitespace and declared delimiters only,
+ * so a theory that never declares `(` and `)` reads `(a)` as one token.
+ * Engine text for such a theory gets its grouping spaced — `( a )` —
+ * which every theory reads the same way. Left alone when a notation
+ * token itself contains a parenthesis (mm0.md permits `foo(`), since
+ * spacing would cut that token apart.
+ */
+function spaceGrouping(lang: SurfaceLanguage, printed: string): string {
+  const { left, right } = lang.spec.delimiters;
+
+  if (
+    (left.has("(") || right.has("(")) &&
+    (left.has(")") || right.has(")"))
+  ) {
+    return printed;
+  }
+
+  const tokens = lang.spec.notations.flatMap((notation) =>
+    notation.form === "simple"
+      ? [notation.token]
+      : notation.literals.flatMap((literal) =>
+          literal.kind === "constant" ? [literal.token] : [],
+        ),
+  );
+
+  if (tokens.some((token) => token.includes("(") || token.includes(")"))) {
+    return printed;
+  }
+
+  return printed
+    .replace(/\(/g, "( ")
+    .replace(/\)/g, " )")
+    .replace(/ {2,}/g, " ");
 }
 
 function render(lang: SurfaceLanguage, term: Term, mode: PrintMode): string {
@@ -176,8 +216,15 @@ function renderApplication(
   }
 
   if (mode === "engine") {
-    const args = term.args.map((arg) => {
+    const binders = lang.spec.terms.get(term.term)?.binders ?? [];
+    const args = term.args.map((arg, at) => {
       const rendered = render(lang, arg, mode);
+
+      // A bound binder's argument is a variable and must stand bare: the
+      // engine wants a name in that slot, not a group around one.
+      if (binders[at]?.binds === true) {
+        return rendered;
+      }
 
       return rendered.startsWith("(") ? rendered : `(${rendered})`;
     });

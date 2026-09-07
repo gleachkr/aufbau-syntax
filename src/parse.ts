@@ -18,12 +18,14 @@
  *   4. **Lints** — the closed set of post-parse checks
  *      (`parenthesize-binary-only`, `closed-sentences`).
  *
- * Two survivable deviations, both surface-side supersets: a lexicon name
- * (nullary, elided-bare, or applied to parenthesized or juxtaposed
- * arguments) counts as `expression(max)`, where MM0 puts constructor
- * application at 1024; and a token that is both a notation and a lexicon
- * name (Calgary's `A`) is disambiguated by backtracking, notation reading
- * first.
+ * Constructor application is MM0's own production, `expression(1024) →
+ * FUNC expression(max){n}` — `S x`, `pair a b`, `succ (succ x)` — with
+ * two surface-side supersets in front of it: a lexicon name applied to
+ * bracketed arguments (`S(x)`, `R(a,b)`), or elided-bare, or glued to
+ * juxtaposed arguments, counts as `expression(max)`, so a textbook's
+ * `F(a)` can sit anywhere an atom can. A token that is both a notation
+ * and a lexicon name (Calgary's `A`) is disambiguated by backtracking,
+ * notation reading first.
  *
  * mm0.md's slot-precedence rules are used exactly: a prefix notation's
  * intermediate arguments parse at max and its last at the notation's
@@ -33,6 +35,7 @@
  * graph, per the spec.
  */
 
+import { delimiterRules, isReachableChunk } from "./delimiters.js";
 import { type Diagnostic, diagnostic, type Span } from "./diagnostics.js";
 import { elaborate, remapSpan } from "./elab.js";
 import type { NotationInfo, Spec, TermInfo } from "./reader/spec.js";
@@ -67,6 +70,9 @@ const TEMPLATES: Record<string, string> = {
 function precNum(prec: number | "max"): number {
   return prec === "max" ? Number.POSITIVE_INFINITY : prec;
 }
+
+/** mm0.md: bare constructor application is `expression(1024)`. */
+const APPLICATION_PRECEDENCE = 1024;
 
 interface PrefixEntry {
   readonly kind: "prefix";
@@ -271,8 +277,29 @@ export class SurfaceLanguage {
       }
     }
 
+    // The canonical spelling is the last-declared notation the theory's
+    // own delimiters can read back; a token a delimiter cuts through (`/\`
+    // under `[x/t]`'s `/`) is dead — mm0.md forbids it — and only stands
+    // when nothing else does.
+    const rules = delimiterRules(spec.delimiters);
+    const readable = (notation: NotationInfo): boolean =>
+      (notation.form === "simple"
+        ? [notation.token]
+        : notation.literals.flatMap((literal) =>
+            literal.kind === "constant" ? [literal.token] : [],
+          )
+      ).every((token) => isReachableChunk(token, rules));
+
     for (const notation of spec.notations) {
-      this.canonical.set(notation.term, notation);
+      const standing = this.canonical.get(notation.term);
+
+      if (
+        standing === undefined ||
+        readable(notation) ||
+        !readable(standing)
+      ) {
+        this.canonical.set(notation.term, notation);
+      }
     }
 
     // Later notations overwrite earlier ones, so each sort's arc ends up
@@ -940,7 +967,7 @@ class Parse {
     min: number,
   ): Term | null {
     if (reading.kind === "name") {
-      return this.parseName(start, reading);
+      return this.parseName(start, reading, min);
     }
 
     const close = this.lang.closeOf.get(reading.token);
@@ -1227,20 +1254,26 @@ class Parse {
   }
 
   /**
-   * A lexicon name: a `@vars` token (a variable of its sort), or a
-   * declared term with no notation of its own — a sentence letter,
-   * predicate, function symbol, or constant. A term's arguments come
-   * parenthesized (application syntax, so the argument is not marked
-   * `grouped` and the binary-only lint does not apply inside; the
-   * canonical pair is always the first declared one), or juxtaposed when
-   * the argument sort has an `@syntax juxtaposed` combiner, or not at all
-   * when it has an `@syntax elided` term. Context settles the `A`-as-∀
-   * ambiguity exactly as in Carnap: the quantifier reading was tried
-   * first, and fell through to here only if it failed.
+   * A lexicon name: a `@vars` token (a variable of its sort), or any
+   * declared term — a sentence letter, predicate, function symbol, or
+   * constant, or a notated term written by name. Each of a term's arguments
+   * comes one of four ways, tried in this order: parenthesized
+   * (application syntax, so the argument is not marked `grouped` and the
+   * binary-only lint does not apply inside; the canonical pair is always
+   * the first declared one); juxtaposed, when the argument sort has an
+   * `@syntax juxtaposed` combiner; not at all, when it has an `@syntax
+   * elided` term; or bare — MM0's own `FUNC expression(max){n}`, so
+   * `S x` and `pair a b` read exactly as the engine reads them. The
+   * declared shapes go first because they are declared: a spec that
+   * elides a sort's unit has said what a bare letter means there.
+   * Context settles the `A`-as-∀ ambiguity exactly as in Carnap: the
+   * quantifier reading was tried first, and fell through to here only if
+   * it failed.
    */
   private parseName(
     start: number,
     reading: Reading & { kind: "name" },
+    min: number,
   ): Term | null {
     this.position = start + reading.length;
 
@@ -1268,8 +1301,30 @@ class Parse {
     const argBinders = info.binders.filter((binder) => !binder.binds);
     const args: Term[] = [];
 
-    for (const binder of argBinders) {
+    for (const binder of info.binders) {
       const target = binderSort(binder);
+
+      // A bound binder is filled positionally, by a variable of its sort —
+      // `sb x t p`, `all x p` — as in every MM0 application.
+      if (binder.binds) {
+        if (min > APPLICATION_PRECEDENCE) {
+          return this.report(
+            "needs_parentheses",
+            { token: reading.name },
+            { start, end: start + reading.length },
+          );
+        }
+
+        const variable = this.expectBoundVariable(target);
+
+        if (variable === null) {
+          return null;
+        }
+
+        args.push(variable);
+        continue;
+      }
+
       const combiner =
         argBinders.length === 1
           ? this.lang.juxtaposedOf.get(target)
@@ -1386,11 +1441,31 @@ class Parse {
         continue;
       }
 
-      return this.report(
-        "expected_formula_found",
-        { token: reading.name },
-        { start, end: start + reading.length },
-      );
+      // Bare application. It is `expression(1024)`, so it cannot fill a
+      // max slot — another application's argument, a prefix notation's
+      // intermediate argument: `succ succ x` is refused here just as the
+      // engine refuses it, and `succ (succ x)` is the spelling.
+      if (min > APPLICATION_PRECEDENCE) {
+        return this.report(
+          "needs_parentheses",
+          { token: reading.name },
+          { start, end: start + reading.length },
+        );
+      }
+
+      const arg = this.parseExpr(Number.POSITIVE_INFINITY);
+
+      if (arg === null) {
+        return null;
+      }
+
+      const coerced = this.coerceOrReport(arg, target);
+
+      if (coerced === null) {
+        return null;
+      }
+
+      args.push(coerced);
     }
 
     return {

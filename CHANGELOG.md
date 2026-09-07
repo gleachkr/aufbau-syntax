@@ -2,6 +2,40 @@
 
 ## Unreleased
 
+**The math-string parser reads all of MM0's application syntax.** A
+constructor applied by name — `S x`, `pair a b`, `succ (succ x)` — reads
+as `expression(1024) → FUNC expression(max){n}`, exactly as the engine
+reads it; before, an argument had to be bracketed (`S(x)`), and a
+two-place term with no notation could only be written `pair(a)(b)`. Every
+term is now a lexicon name — one with a notation, one with bound binders
+(`sb x t p`, `all x p`) — with the bound slots filled positionally by a
+variable. The declared surface shapes keep precedence: an `@syntax
+elided` sort still reads a bare letter as the elision, `@syntax
+juxtaposed` still glues. `delimiter_unreachable_name` now fires only for
+a term whose name is its only spelling.
+
+**The statement reader takes the rest of the grammar**: `input`/`output`
+statements (carried as `InOutStatement`, uninterpreted), the arrow sugar
+on a `def` (`DefStatement.returnChain` replaces `returnType`), a def's
+dot-dummies excluded from its arity (they are variables of the
+definiens, never arguments — `def le {.k: nat} (a b: nat)` takes an
+`infixl`), and sorts and terms as separate namespaces (`sort nat` beside
+`def nat`, as in peano.mm0).
+
+**Dead tokens.** A notation token the delimiters cut through (`/\` in a
+file whose `[x/t]` makes `/` a delimiter) is reported as a
+`delimiter_splits_token` warning — mm0.md forbids it, the engine cannot
+read it either — and the printer no longer chooses it as the canonical
+spelling. Engine-mode printing also spaces its grouping (`F ( a )`) for a
+theory that declares no delimiters at all, since there `(a)` is one
+token, and writes a bound binder's variable bare.
+
+**An MM0 corpus** under `tests/fixtures/mm0/` — the upstream examples
+(peano, set, hol, mm0.mm0, x86) and the Aufbau repository's theories —
+now gates all of this: every math string parses, round-trips through
+engine printing, and compiles with the Aufbau compiler to byte-identical
+MMB with the original text.
+
 **`@syntax role` may sit on a rule** (`RuleInfo.roles`, symmetric with
 sorts and terms). A calculus can now say which of its axioms is the
 assumption rule — `role assumption` beside `alias AS` — so a proof editor

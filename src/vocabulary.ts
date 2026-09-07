@@ -50,7 +50,6 @@ export function surfaceVocabulary(spec: Spec): Vocabulary {
     tokens.add(close);
   }
 
-  const coercions = new Set(spec.coercions.map((c) => c.name));
   const names = new Map<string, NameRef>();
 
   for (const sort of spec.sorts.values()) {
@@ -59,16 +58,38 @@ export function surfaceVocabulary(spec: Spec): Vocabulary {
     }
   }
 
+  // Every term is a lexicon name: MM0's `FUNC expression(max){n}` applies
+  // any constructor by name, notation or no notation, bound binders or
+  // none — `sb x t p` beside `[t / x] p`. A `@vars` token keeps the name.
   for (const term of spec.terms.values()) {
-    if (
-      !notated.has(term.name) &&
-      !coercions.has(term.name) &&
-      !term.binders.some((binder) => binder.binds) &&
-      !names.has(term.name)
-    ) {
+    if (!names.has(term.name)) {
       names.set(term.name, { kind: "term", term: term.name });
     }
   }
 
   return { names, tokens };
+}
+
+/**
+ * The terms whose name is their *only* spelling: no notation, not a
+ * coercion (inserted silently), no bound binder (a quantifier-shaped term
+ * is written by its notation). These are the names the surface delimiters
+ * must leave whole; any other term's name is a secondary spelling, MM0's
+ * application syntax, and is reachable wherever the engine's own
+ * delimiters apply even when a textbook's letter delimiters split it.
+ */
+export function nameOnlyTerms(spec: Spec): ReadonlySet<string> {
+  const notated = new Set(spec.notations.map((notation) => notation.term));
+  const coercions = new Set(spec.coercions.map((c) => c.name));
+
+  return new Set(
+    [...spec.terms.values()]
+      .filter(
+        (term) =>
+          !notated.has(term.name) &&
+          !coercions.has(term.name) &&
+          !term.binders.some((binder) => binder.binds),
+      )
+      .map((term) => term.name),
+  );
 }

@@ -20,7 +20,7 @@ import {
   type Severity,
   type Span,
 } from "../diagnostics.js";
-import { surfaceVocabulary } from "../vocabulary.js";
+import { nameOnlyTerms, surfaceVocabulary } from "../vocabulary.js";
 import {
   type ElabRule,
   type LintName,
@@ -215,6 +215,8 @@ const TEMPLATES: Record<string, string> = {
     "{token} is not a surface delimiter; it is only read when whitespace or a delimiter bounds it, so it will run into an adjacent token",
   delimiter_unreachable_name:
     "the delimiters split {name} into {chunks}, so it can never be read as one name",
+  delimiter_splits_token:
+    "the delimiters split the notation token {token} into {chunks}, so it can never be read; mm0.md requires a token not to contain a delimiter",
 };
 
 function report(
@@ -288,6 +290,38 @@ function tokenSpans(spec: Spec): Map<string, Span> {
 }
 
 /**
+ * A notation token a delimiter cuts through is dead: mm0.md forbids it
+ * outright ("a declared token must not contain a delimiter token as a
+ * substring"), the engine cannot read it either, and the printer never
+ * picks it as a spelling. A warning rather than an error, since the
+ * engine tolerates the declaration — `/\\` beside `∧` in a file whose
+ * `[x/t]` makes `/` a delimiter — and so does everything here.
+ */
+function reportDeadTokens(spec: Spec, diagnostics: Diagnostic[]): void {
+  // The theory's own delimiters, not the surface set: a token the surface
+  // letters split (`tsub` under forallx) is an engine-only notation, and
+  // `delimiter_token_not_delimited` already says so.
+  const rules = delimiterRules(spec.delimiters);
+  const spans = tokenSpans(spec);
+
+  for (const token of surfaceVocabulary(spec).tokens) {
+    const span = spans.get(token);
+
+    if (span === undefined || isReachableChunk(token, rules)) {
+      continue;
+    }
+
+    report(
+      diagnostics,
+      "delimiter_splits_token",
+      { chunks: segment(token, rules).join(" "), token },
+      span,
+      "warning",
+    );
+  }
+}
+
+/**
  * The surface delimiter set, checked against the vocabulary it has to cut
  * up. Only runs when the spec declares `@syntax delimiter`: a spec that
  * declares none is read under the theory's own delimiters, where tokens
@@ -341,10 +375,17 @@ function checkSurfaceDelimiters(
 
   // A name the delimiters split apart is unreachable: segmentation happens
   // before anything knows the name exists, so no bracketing recovers it.
-  // Elided terms are exempt — they are supplied by the parser and dropped
-  // by the printer, never typed.
+  // Only a term with no other spelling is at stake; a notated term's name
+  // is MM0's application syntax, still reachable under the engine's own
+  // delimiters. Elided terms are exempt — they are supplied by the parser
+  // and dropped by the printer, never typed.
+  const nameOnly = nameOnlyTerms(spec);
+
   for (const [name, ref] of vocabulary.names) {
-    if (ref.kind === "term" && spec.terms.get(ref.term)?.elided === true) {
+    if (
+      ref.kind === "term" &&
+      (spec.terms.get(ref.term)?.elided === true || !nameOnly.has(ref.term))
+    ) {
       continue;
     }
 
@@ -483,7 +524,10 @@ export function parseSpec(source: string): SpecParse {
 
     switch (statement.kind) {
       case "sort": {
-        if (sorts.has(statement.name) || terms.has(statement.name)) {
+        // Sorts and terms are separate namespaces (peano.mm0 declares a
+        // sort `nat` and a def `nat`); each name may be declared once
+        // within its own.
+        if (sorts.has(statement.name)) {
           report(
             diagnostics,
             "duplicate_declaration",
@@ -520,7 +564,7 @@ export function parseSpec(source: string): SpecParse {
 
       case "term":
       case "def": {
-        if (sorts.has(statement.name) || terms.has(statement.name)) {
+        if (terms.has(statement.name)) {
           report(
             diagnostics,
             "duplicate_declaration",
@@ -531,26 +575,28 @@ export function parseSpec(source: string): SpecParse {
         }
 
         const returnSort =
-          statement.kind === "term"
-            ? (statement.returnChain[statement.returnChain.length - 1]
-                ?.sort ?? "")
-            : statement.returnType.sort;
+          statement.returnChain[statement.returnChain.length - 1]?.sort ?? "";
 
-        // Arrow sugar on a term (`a > b > c`) desugars to extra anonymous
-        // regular binders so arity means one thing everywhere downstream.
-        const extra: Binder[] =
-          statement.kind === "term"
-            ? statement.returnChain.slice(0, -1).map((type) => ({
-                binds: false,
-                dummy: false,
-                name: "_",
-                span: type.span,
-                type,
-              }))
-            : [];
+        // Arrow sugar (`a > b > c`) desugars to extra anonymous regular
+        // binders so arity means one thing everywhere downstream. A
+        // def's dot-dummies go the other way: they are variables of the
+        // definiens, never arguments, so they are no part of the
+        // syntax.
+        const extra: Binder[] = statement.returnChain
+          .slice(0, -1)
+          .map((type) => ({
+            binds: false,
+            dummy: false,
+            name: "_",
+            span: type.span,
+            type,
+          }));
+        const arguments_ = statement.binders.filter(
+          (binder) => !binder.dummy,
+        );
 
         terms.set(statement.name, {
-          binders: [...statement.binders, ...extra],
+          binders: [...arguments_, ...extra],
           elided: false,
           foreignAnnotations: foreign,
           isDef: statement.kind === "def",
@@ -1095,6 +1141,7 @@ export function parseSpec(source: string): SpecParse {
     terms,
   };
 
+  reportDeadTokens(spec, diagnostics);
   checkSurfaceDelimiters(spec, surfaceDeclarations, diagnostics);
   checkElabLiterals(spec, diagnostics);
 

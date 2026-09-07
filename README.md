@@ -26,7 +26,8 @@ One spec file per textbook system; no code per system.
 ## The layer stack
 
 1. **Statement reader** — parses the MM0 statement grammar (sorts, terms,
-   notations, coercions, delimiters) and `--|` annotations into a `Spec`.
+   definitions, axioms and theorems, notations, coercions, delimiters,
+   input/output) and `--|` annotations into a `Spec`.
    `@syntax` annotations are understood structurally; all others (`@acui`,
    `@congr`, …) pass through as data — except `@vars`, which is read *and*
    passed through: the engine's variable pools are the surface lexicon's

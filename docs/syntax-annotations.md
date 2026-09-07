@@ -41,12 +41,17 @@ term f (s: seq): tm;
   engine annotation; it is never stripped, and a token in a pool may not
   also be a declared term (validated).
 - **Predicates, function symbols, and sentence letters** are declared
-  terms. A term *with* a notation is spelled by its notation; a term
-  without one is spelled by its name — MM0's own application rule, read
-  character-level, so `F(a,b)` is application syntax with no machinery
-  behind it. The argument-sequence trick (one `seq` argument, built by an
-  infix comma) makes one letter variadic; `elided` (below) makes its
-  nullary use — the sentence letter, the constant — the same declaration.
+  terms. Every term is applicable by name — MM0's own rule, `FUNC
+  expression(max){n}`, so `S x`, `pair a b` and `succ (succ x)` read as
+  the engine reads them, and a term *with* a notation is spelled by it
+  and still applicable by name (`sb x t p` beside `[t/x] p`). On top of
+  that, a name applied to a bracketed argument list — `F(a,b)`, `S(x)` —
+  is an atom, so a textbook's application syntax can sit anywhere an atom
+  can. The argument-sequence trick (one `seq` argument, built by an infix
+  comma) makes one letter variadic; `elided` (below) makes its nullary
+  use — the sentence letter, the constant — the same declaration, and
+  takes precedence over bare application for that sort: `P a` is a
+  sentence letter followed by a stray `a`, not `P(a)`.
 - **Alias spellings** are extra notations on one constructor; all parse,
   and the **last declared is canonical** — it is what the printer writes.
   Put the ASCII forms first and the display glyph last.

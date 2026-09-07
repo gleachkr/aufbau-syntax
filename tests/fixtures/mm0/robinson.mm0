@@ -1,0 +1,98 @@
+delimiter $ ( ) $;
+provable sort wff;
+sort lit;
+sort clause;
+sort cnf;
+
+term iff (a b: wff): wff;
+infixr iff: $↔$ prec 20;
+infixr iff: $<->$ prec 20;
+term clause_eq (a b: clause): wff;
+term cnf_eq (a b: cnf): wff;
+term derives (s: cnf): wff;
+prefix derives: $⊢$ prec 0;
+
+term p: lit;
+term q: lit;
+term r: lit;
+term neg (x: lit): lit;
+prefix neg: $¬$ prec 100;
+prefix neg: $~$ prec 100;
+
+term clause_bot: clause;
+notation clause_bot: clause = ($⊥$:max);
+--| @acui clause_assoc clause_comm clause_bot clause_idem
+term disj (a b: clause): clause;
+infixr disj: $∨$ prec 35;
+infixr disj: $\/$ prec 35;
+term clit (x: lit): clause;
+coercion clit: lit > clause;
+term cnf_top: cnf;
+notation cnf_top: cnf = ($⊤$:max);
+--| @acui cnf_assoc cnf_comm cnf_top cnf_idem
+term join (a b: cnf): cnf;
+infixr join: $∧$ prec 30;
+infixr join: $/\$ prec 30;
+term cl (c: clause): cnf;
+coercion cl: clause > cnf;
+
+--| @relation wff iff iff_refl iff_trans iff_sym iff_mp
+axiom iff_refl (a: wff): $ a ↔ a $;
+axiom iff_trans (a b c: wff):
+  $ a ↔ b $ > $ b ↔ c $ > $ a ↔ c $;
+axiom iff_sym (a b: wff): $ a ↔ b $ > $ b ↔ a $;
+axiom iff_mp (a b: wff): $ a ↔ b $ > $ a $ > $ b $;
+
+--| @relation clause clause_eq clause_refl clause_trans clause_sym _
+axiom clause_refl (a: clause): $ clause_eq a a $;
+axiom clause_trans (a b c: clause):
+  $ clause_eq a b $ > $ clause_eq b c $ > $ clause_eq a c $;
+axiom clause_sym (a b: clause): $ clause_eq a b $ > $ clause_eq b a $;
+
+--| @relation cnf cnf_eq cnf_refl cnf_trans cnf_sym _
+axiom cnf_refl (a: cnf): $ cnf_eq a a $;
+axiom cnf_trans (a b c: cnf):
+  $ cnf_eq a b $ > $ cnf_eq b c $ > $ cnf_eq a c $;
+axiom cnf_sym (a b: cnf): $ cnf_eq a b $ > $ cnf_eq b a $;
+
+axiom clause_assoc (a b c: clause):
+  $ clause_eq ((a ∨ b) ∨ c) (a ∨ (b ∨ c)) $;
+axiom clause_comm (a b: clause): $ clause_eq (a ∨ b) (b ∨ a) $;
+axiom clause_idem (a: clause): $ clause_eq (a ∨ a) a $;
+axiom clause_unit (a: clause): $ clause_eq (⊥ ∨ a) a $;
+
+axiom cnf_assoc (a b c: cnf):
+  $ cnf_eq ((a ∧ b) ∧ c) (a ∧ (b ∧ c)) $;
+axiom cnf_comm (a b: cnf): $ cnf_eq (a ∧ b) (b ∧ a) $;
+axiom cnf_idem (a: cnf): $ cnf_eq (a ∧ a) a $;
+axiom cnf_unit (a: cnf): $ cnf_eq (⊤ ∧ a) a $;
+
+--| @congr
+axiom disj_congr (a1 a2 b1 b2: clause):
+  $ clause_eq a1 a2 $ > $ clause_eq b1 b2 $ >
+  $ clause_eq (a1 ∨ b1) (a2 ∨ b2) $;
+
+--| @congr
+axiom join_congr (a1 a2 b1 b2: cnf):
+  $ cnf_eq a1 a2 $ > $ cnf_eq b1 b2 $ >
+  $ cnf_eq (a1 ∧ b1) (a2 ∧ b2) $;
+
+--| @congr
+axiom cl_congr (a b: clause):
+  $ clause_eq a b $ > $ cnf_eq (cl a) (cl b) $;
+
+--| @congr
+axiom derives_congr (a b: cnf):
+  $ cnf_eq a b $ > $ (⊢ a) ↔ (⊢ b) $;
+
+axiom resolve (g d: cnf) (a b: clause) (x: lit):
+  $ ⊢ (g ∧ ((a ∨ x) ∧ ((b ∨ ¬ x) ∧ d))) $
+  > $ ⊢ (g ∧ ((a ∨ b) ∧ d)) $;
+
+theorem resolve_on_q:
+  $ ⊢ ((p ∨ q) ∧ ((¬ p ∨ r) ∧ ((¬ q) ∧ (¬ r)))) $
+  > $ ⊢ ((¬ p ∨ r) ∧ (p ∧ (¬ r))) $;
+
+theorem robinson:
+  $ ⊢ ((p ∨ q) ∧ ((¬ p ∨ r) ∧ ((¬ q) ∧ (¬ r)))) $
+  > $ ⊢ ⊥ $;
