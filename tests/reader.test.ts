@@ -336,10 +336,20 @@ describe("spec validation", () => {
   });
 
   test("role annotations check their attachment", () => {
-    const onAxiom = parseSpec(
-      `${WFF}term t: wff;\n--| @syntax role sentence\naxiom ax: $ t $;`,
+    const onDelimiter = parseSpec(
+      `${WFF}--| @syntax role sentence\ndelimiter $ ( ) $;`,
     );
-    expect(ids(onAxiom)).toEqual(["role_target"]);
+    expect(ids(onDelimiter)).toEqual(["role_target"]);
+  });
+
+  test("a role sits on a rule too, beside its aliases", () => {
+    const { spec, diagnostics } = parseSpec(
+      `${WFF}term t: wff;\n--| @syntax role assumption\n--| @syntax alias AS\naxiom ax: $ t $;\n--| @syntax role premise\ntheorem pr: $ t $;`,
+    );
+    expect(diagnostics).toEqual([]);
+    expect(spec.rules.get("ax")?.roles).toEqual(["assumption"]);
+    expect(spec.rules.get("ax")?.aliases).toEqual(["AS"]);
+    expect(spec.rules.get("pr")?.roles).toEqual(["premise"]);
   });
 
   test("a role sits on a sort as readily as on a term, uninterpreted", () => {

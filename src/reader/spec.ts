@@ -89,8 +89,9 @@ export interface CoercionInfo {
 
 /**
  * An axiom or theorem, as far as the surface layer is concerned: a name a
- * proof cites, and the `@syntax alias` names it may cite it by instead. The
- * statement itself passes through opaque, on `Spec.statements`.
+ * proof cites, the `@syntax alias` names it may cite it by instead, and the
+ * `@syntax role`s that say what it is for. The statement itself passes
+ * through opaque, on `Spec.statements`.
  */
 export interface RuleInfo {
   /** In declaration order; never contains the rule's own name. */
@@ -98,6 +99,12 @@ export interface RuleInfo {
   readonly foreignAnnotations: readonly Annotation[];
   readonly kind: "axiom" | "theorem";
   readonly name: string;
+  /**
+   * `@syntax role`: what this rule *is* to a consumer — a proof editor
+   * looks for `assumption` to tell the lines that open a hypothesis from
+   * the ones that cite a rule. Uninterpreted here, like a term's roles.
+   */
+  readonly roles: readonly string[];
   readonly span: Span;
 }
 
@@ -197,7 +204,7 @@ const TEMPLATES: Record<string, string> = {
   elided_duplicate: "sort {sort} already has an elided term",
   vars_term_conflict:
     "@vars token {token} is also a declared term; a name can be only one",
-  role_target: "@syntax role must sit on a sort or a term",
+  role_target: "@syntax role must sit on a sort, a term, or a rule",
   alias_target: "@syntax alias must sit on an axiom or a theorem",
   alias_is_rule_name:
     "{alias} is already the name of a rule, so it cannot be an alias",
@@ -631,6 +638,7 @@ export function parseSpec(source: string): SpecParse {
 
         rules.set(statement.name, {
           aliases: [],
+          roles: [],
           foreignAnnotations: foreign,
           kind: statement.kind,
           name: statement.name,
@@ -728,6 +736,18 @@ export function parseSpec(source: string): SpecParse {
 
           if (info !== undefined) {
             sorts.set(statement.name, {
+              ...info,
+              roles: [...info.roles, annotation.role],
+            });
+          }
+          break;
+        }
+
+        if (statement.kind === "axiom" || statement.kind === "theorem") {
+          const info = rules.get(statement.name);
+
+          if (info !== undefined) {
+            rules.set(statement.name, {
               ...info,
               roles: [...info.roles, annotation.role],
             });

@@ -2,6 +2,13 @@
 
 ## Unreleased
 
+**`@syntax role` may sit on a rule** (`RuleInfo.roles`, symmetric with
+sorts and terms). A calculus can now say which of its axioms is the
+assumption rule — `role assumption` beside `alias AS` — so a proof editor
+reads that off the spec instead of taking it per exercise or guessing
+from a spelling. Uninterpreted here, as every role is. `role_target` now
+reads "a sort, a term, or a rule".
+
 **A rule can carry the names a proof cites it by.** A new per-rule
 `@syntax alias <name>…` annotation, attached to an `axiom` or a
 `theorem`. MM0 identifiers are ASCII, so a textbook's `∧I` was never

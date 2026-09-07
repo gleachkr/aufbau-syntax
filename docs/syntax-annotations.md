@@ -16,7 +16,7 @@ Attachment rules:
 |---|---|
 | `juxtaposed` | a binary term whose arguments and result share one sort |
 | `elided` | a nullary term |
-| `role` | a `sort`, a `term`, or a `def` |
+| `role` | a `sort`, a `term`, a `def`, an `axiom`, or a `theorem` |
 | `alias` | an `axiom` or a `theorem` |
 | everything else | any statement — the effect is spec-wide |
 
@@ -425,6 +425,22 @@ language.parse(text, { sort: sentence ?? undefined });
 
 That keeps the choice where it belongs — in the spec, which is data —
 without the library privileging one sort name.
+
+A role may sit on a **rule** as well, on `RuleInfo.roles`, for what a
+consumer needs to know about a rule beyond its name. A proof editor that
+lays lines out in the Fitch style has to tell the lines that open a
+hypothesis from the ones that cite a rule; that is a fact about the
+calculus, not about any one proof, so the calculus says it:
+
+```text
+--| @syntax role assumption
+--| @syntax alias AS
+axiom ax (ga: ctx) (ph: wff): $ ga ; ph ⊢ ph $;
+```
+
+The role names what the rule *is*; the alias, what a proof *writes*.
+Keep them apart: a consumer that looked for the rule spelled `AS` would
+break the moment a book spelled it `PR`.
 
 ## `alias <name>…`
 

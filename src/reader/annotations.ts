@@ -14,7 +14,8 @@
  *     share one sort (adjacency of that sort's expressions denotes it);
  *   - `elided` attaches to a nullary term (supplied when an argument of
  *     its sort is missing, dropped again when printing);
- *   - `role` attaches to a `sort`, a `term`, or a `def`;
+ *   - `role` attaches to a `sort`, a `term`, a `def`, an `axiom`, or a
+ *     `theorem`;
  *   - `alias` attaches to an `axiom` or a `theorem` (the names a proof may
  *     cite it by, since the engine's identifiers are ASCII);
  *   - everything else is spec-wide and may sit on any statement.
