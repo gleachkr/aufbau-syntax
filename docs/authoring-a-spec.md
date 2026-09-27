@@ -229,10 +229,12 @@ printTerm(language, result.term, "display");        // "∀xF(x) → G(a)"
 printTerm(language, result.term, "engine");         // for the compiler
 ```
 
-The round-trip laws worth asserting for any new spec: display output
-re-parses to the same tree and prints stably; engine output re-parses
-(`{ mode: "engine" }`, which reads it under the theory's own delimiters
-rather than the surface set) to the same tree; and — the strongest check —
+The round-trip law holds for every spec by construction, and
+`tests/round-trip.test.ts` checks it over random terms: display output
+re-parses to the same tree, and engine output re-parses (`{ mode:
+"engine" }`, which reads it under the theory's own delimiters rather than
+the surface set) to the same tree. Adding a new spec to that test's list
+is the cheapest assurance there is. The strongest check —
 the Aufbau compiler accepts engine output against the stripped spec, which
 `tests/engine-align.test.ts` shows how to do with the `iff_refl` trick.
 

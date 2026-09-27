@@ -199,6 +199,37 @@ prefix ex: $∃$ prec 50;
     }
   });
 
+  test("a word-spelled quantifier keeps its space from the variable", () => {
+    // No letter delimiters: `every` is one chunk, and so would `everyx`
+    // be. Delaboration joins as tight as the delimiters allow, which here
+    // is not at all.
+    const { spec, diagnostics } = parseSpec(`
+--| @syntax elab $ every ?x:var $ => $ ∀ ?x $
+--| @syntax delimiter $ ( ) ∀ $
+delimiter $ ( ) $;
+provable sort wff;
+--| @vars x y
+sort var;
+term Cube (x: var): wff;
+term all {x: var} (p: wff x): wff;
+prefix all: $∀$ prec 50;
+`);
+
+    expect(diagnostics).toEqual([]);
+
+    const words = new SurfaceLanguage(spec);
+    const parsed = words.parse("every x Cube(x)");
+
+    expect(parsed.ok).toBe(true);
+
+    if (parsed.ok) {
+      const shown = printTerm(words, parsed.term, "display");
+
+      expect(shown).toBe("every x Cube(x)");
+      expect(words.parse(shown).ok).toBe(true);
+    }
+  });
+
   test("a bound name is not eaten by an elab literal", () => {
     // Calgary's shape: the quantifier is spelled with a letter that is also
     // a predicate letter, so the spelling lives in an elab rule rather than

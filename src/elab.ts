@@ -13,7 +13,9 @@
  *
  * Backward (delaboration, after the display printer): the same rules run
  * inverted — template as pattern, pattern as replacement — in reverse
- * declaration order, joined tight, skipping `input-only` rules. A linear
+ * declaration order, joined as tight as the delimiters allow (a space only
+ * at a seam that would otherwise run two chunks together, as the printer
+ * does), skipping `input-only` rules. A linear
  * rule is a lens: the Quine rule `( ?x:var ) => ∀ ?x` read backward *is*
  * the display convention that writes `∀x` as `(x)`.
  *
@@ -43,6 +45,7 @@
  * parser behavior (`@syntax juxtaposed`), as it is for Magnus.
  */
 
+import { adjoin, type DelimiterRules } from "./delimiters.js";
 import type { SurfaceLanguage } from "./parse.js";
 import type {
   ElabRule,
@@ -222,6 +225,7 @@ function emitTemplate(
   matchStart: number,
   originOf: (index: number) => number,
   separator: " " | "",
+  rules: DelimiterRules,
 ): Emission {
   const pieces: { text: string; start: number }[] = [];
 
@@ -246,7 +250,7 @@ function emitTemplate(
   const origin: number[] = [];
 
   pieces.forEach((piece, index) => {
-    if (index > 0 && separator === " ") {
+    if (index > 0 && needsSpace(text, piece.text, separator, rules)) {
       text += " ";
       origin.push(originOf(piece.start));
     }
@@ -259,6 +263,24 @@ function emitTemplate(
   });
 
   return { text, origin };
+}
+
+/**
+ * Whether `right` needs a space after `left`: always when spaced, and when
+ * tight only where the two would otherwise run together — see
+ * {@link adjoin}.
+ */
+function needsSpace(
+  left: string,
+  right: string,
+  separator: " " | "",
+  rules: DelimiterRules,
+): boolean {
+  if (separator === " ") {
+    return true;
+  }
+
+  return adjoin(left, right, rules).length > left.length + right.length;
 }
 
 /** One pass of one rule, in the given direction. */
@@ -276,9 +298,35 @@ function applyRule(
   let out = "";
   const outOrigin: number[] = [];
   let position = 0;
+  // Set after a replacement: the seams on either side of emitted text are
+  // new, and tight output checks them. Copied text meets copied text at a
+  // seam the source already had, which reads as it did.
+  let fresh = false;
+
+  // A seam in tight output that would run two chunks together gets a
+  // space, attributed to the character after it.
+  const seam = (next: string, at: number): void => {
+    if (
+      fresh &&
+      separator === "" &&
+      needsSpace(out, next, separator, lang.scanner.rules)
+    ) {
+      out += " ";
+      outOrigin.push(at);
+    }
+  };
 
   const copy = (from: number, to: number): void => {
-    for (let i = from; i < to && i < text.length; i += 1) {
+    const end = Math.min(to, text.length);
+
+    if (end <= from) {
+      return;
+    }
+
+    seam(text.slice(from, end), originOf(from));
+    fresh = false;
+
+    for (let i = from; i < end; i += 1) {
       out += text[i];
       outOrigin.push(originOf(i));
     }
@@ -303,8 +351,11 @@ function applyRule(
         point.start,
         originOf,
         separator,
+        lang.scanner.rules,
       );
 
+      fresh = true;
+      seam(emitted.text, emitted.origin[0] ?? originOf(point.start));
       out += emitted.text;
       outOrigin.push(...emitted.origin);
       position = match.end;

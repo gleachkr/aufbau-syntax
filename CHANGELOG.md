@@ -2,6 +2,37 @@
 
 ## Unreleased
 
+**Printing then parsing is the identity, for every term.** Display text
+used to set its pieces tight whatever the delimiters said, so under a spec
+without letter delimiters `∀x Cube(x)` printed as `∀xCube(x)` — one chunk
+`xCube` to its own reader. Every seam now goes through `adjoin` (exported
+from the delimiter module): tight where the reader's delimiters cut
+anyway, a space where they would not. Engine text uses the same rule with
+the theory's delimiters, which subsumes the old grouping-spacing special
+case. Delaboration joins its output the same way.
+
+Display parentheses are now exactly what the parser needs, read from its
+own precedence table (`generalParts` shares the general-notation slots
+with the printer): a piece stands bare when its head binds as tight as
+the slot reads and nothing open on its right edge would take in the next
+operator. Before, only connectives were ever parenthesized, so
+`(1 + 0) * 0` printed as `1 + 0 * 0` in any theory with term-level
+arithmetic. Also fixed on the way: a bound variable in display
+application prints bare (`sb x(t)(p)`, which is what the reader takes),
+a right-nested juxtaposed argument keeps its brackets rather than
+flattening into the left-nested `Rxyz`, and `drop-outer-parens` drops the
+connective's own pair rather than slicing any text that happened to
+start with `(`.
+
+The one term display text cannot spell is an `@syntax elided` term
+anywhere but where the reader supplies it — `F(snil,b)` — and there
+`printTerm` now throws `UnprintableTermError` rather than write `snil`,
+which Calgary cannot read back and Magnus would glue into three more
+arguments. Engine text spells it by name, as before.
+
+`tests/round-trip.test.ts` holds the law over random well-sorted terms on
+every spec and every corpus file, in both modes.
+
 **The math-string parser reads all of MM0's application syntax.** A
 constructor applied by name — `S x`, `pair a b`, `succ (succ x)` — reads
 as `expression(1024) → FUNC expression(max){n}`, exactly as the engine

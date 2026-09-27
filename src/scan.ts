@@ -76,7 +76,8 @@ export interface ScanPoint {
 }
 
 export class Scanner {
-  private readonly rules: DelimiterRules;
+  /** The delimiter set this scanner segments by, prepared for matching. */
+  readonly rules: DelimiterRules;
   /** Notation and grouping tokens. */
   private readonly tokens: ReadonlySet<string>;
   /** Lexicon names, each with what it refers to. */

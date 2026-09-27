@@ -6,6 +6,7 @@
 
 export type { DelimiterRules, DelimiterSet } from "./delimiters.js";
 export {
+  adjoin,
   chunkAt,
   delimiterRules,
   isReachableChunk,
@@ -21,7 +22,7 @@ export type {
 } from "./parse.js";
 export { SurfaceLanguage } from "./parse.js";
 export type { PrintMode } from "./print.js";
-export { printTerm } from "./print.js";
+export { printTerm, UnprintableTermError } from "./print.js";
 export type {
   ElabRule,
   LintName,

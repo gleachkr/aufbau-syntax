@@ -57,10 +57,15 @@ term f (s: seq): tm;
   Put the ASCII forms first and the display glyph last.
 - **Spacing** is derived: the display printer spaces sentential
   connectives (infix closed over a `provable` sort: `P ∧ Q`) and sets
-  everything else tight (`¬P`, `∀x`, `a=b`, `R(a,b)`).
+  everything else as tight as the surface delimiters allow (`¬P`, `∀x`,
+  `a=b`, `R(a,b)`). Where two pieces would run together into one chunk —
+  `∀x` against `Cube(x)` in a spec with no letter delimiters — they keep
+  a space (`∀x Cube(x)`).
 - **Display parenthesization** is derived: connective compounds are always
-  parenthesized (the textbook full-paren convention), everything else
-  bare; see `display drop-outer-parens` for the outermost pair.
+  parenthesized (the textbook full-paren convention); everything else
+  gets exactly the parentheses the parser needs, read from its own
+  precedence table (`1 + 0 * 0`, but `(1 + 0) * 0`). See `display
+  drop-outer-parens` for the outermost pair.
 
 The vocabulary is finite — MM0's nature. There is no subscript scheme; a
 book that leans on `x_1` can declare a few such names explicitly (they

@@ -67,7 +67,7 @@ const TEMPLATES: Record<string, string> = {
     "The notation for {term} does not cover all of its arguments.",
 };
 
-function precNum(prec: number | "max"): number {
+export function precNum(prec: number | "max"): number {
   return prec === "max" ? Number.POSITIVE_INFINITY : prec;
 }
 
@@ -87,21 +87,71 @@ interface InfixEntry {
   readonly fixity: "infixl" | "infixr";
 }
 
-interface GeneralSlot {
+export interface GeneralSlot {
   readonly binder: Binder;
   /** Index into the term's binder list this slot fills. */
   readonly index: number;
   readonly prec: number;
 }
 
+export type GeneralPart =
+  | { readonly kind: "constant"; readonly token: string }
+  | { readonly kind: "slot"; readonly slot: GeneralSlot };
+
+/**
+ * A general notation after its head, as the parser reads it: constants to
+ * expect and slots to parse, each slot at mm0.md's P(lits, q) — max before
+ * a variable, p+1 before a constant of precedence p, and q (the head
+ * precedence) when it is the trailing slot. The printer reads the same
+ * table, so what it decides needs no parentheses is what this parses.
+ */
+export function generalParts(
+  notation: NotationInfo & { readonly form: "general" },
+  headPrec: number | "max",
+): readonly GeneralPart[] {
+  const parts: GeneralPart[] = [];
+  const rest = notation.literals.slice(1);
+
+  for (let i = 0; i < rest.length; i += 1) {
+    const literal = rest[i];
+
+    if (literal === undefined) {
+      continue;
+    }
+
+    if (literal.kind === "constant") {
+      parts.push({ kind: "constant", token: literal.token });
+      continue;
+    }
+
+    const index = notation.binders.findIndex(
+      (binder) => binder.name === literal.name,
+    );
+    const binder = notation.binders[index];
+
+    if (binder === undefined) {
+      continue;
+    }
+
+    const following = rest[i + 1];
+    const prec =
+      following === undefined
+        ? precNum(headPrec)
+        : following.kind === "constant"
+          ? precNum(following.prec) + 1
+          : Number.POSITIVE_INFINITY;
+
+    parts.push({ kind: "slot", slot: { binder, index, prec } });
+  }
+
+  return parts;
+}
+
 interface GeneralEntry {
   readonly kind: "general";
   readonly info: TermInfo;
   /** Interleaved constants (to expect) and slots (to parse), head dropped. */
-  readonly parts: readonly (
-    | { readonly kind: "constant"; readonly token: string }
-    | { readonly kind: "slot"; readonly slot: GeneralSlot }
-  )[];
+  readonly parts: readonly GeneralPart[];
 }
 
 type HeadEntry = GeneralEntry | PrefixEntry;
@@ -212,46 +262,7 @@ export class SurfaceLanguage {
         continue;
       }
 
-      // mm0.md's P(lits, q): a slot parses at max before a variable, at
-      // p+1 before a constant of precedence p, and at q (the head
-      // precedence) when it is the trailing slot.
-      const parts: (
-        | { kind: "constant"; token: string }
-        | { kind: "slot"; slot: GeneralSlot }
-      )[] = [];
-      const rest = notation.literals.slice(1);
-
-      for (let i = 0; i < rest.length; i += 1) {
-        const literal = rest[i];
-
-        if (literal === undefined) {
-          continue;
-        }
-
-        if (literal.kind === "constant") {
-          parts.push({ kind: "constant", token: literal.token });
-          continue;
-        }
-
-        const index = notation.binders.findIndex(
-          (binder) => binder.name === literal.name,
-        );
-        const binder = notation.binders[index];
-
-        if (binder === undefined) {
-          continue;
-        }
-
-        const following = rest[i + 1];
-        const prec =
-          following === undefined
-            ? precNum(head.prec)
-            : following.kind === "constant"
-              ? precNum(following.prec) + 1
-              : Number.POSITIVE_INFINITY;
-
-        parts.push({ kind: "slot", slot: { binder, index, prec } });
-      }
+      const parts = generalParts(notation, head.prec);
 
       this.heads.set(head.token, { kind: "general", info, parts });
     }

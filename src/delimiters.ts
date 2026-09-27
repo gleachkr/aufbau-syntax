@@ -140,3 +140,39 @@ export function isReachableChunk(
 ): boolean {
   return name.length > 0 && chunkAt(name, 0, rules) === name;
 }
+
+/**
+ * `left` then `right`, written so the text segments into exactly `left`'s
+ * chunks followed by `right`'s: tight where the delimiters already cut at
+ * the seam, and with one space where they would not. Under letter
+ * delimiters `∀` and `x` and `Cube(x)` set tight as `∀xCube(x)`; without
+ * them that is one chunk `xCube`, and the seam gets its space —
+ * `∀x Cube(x)`.
+ *
+ * This is what makes printing total: a space always separates, since no
+ * delimiter contains whitespace, so whatever the two pieces are, the
+ * result reads back as both of them.
+ */
+export function adjoin(
+  left: string,
+  right: string,
+  rules: DelimiterRules,
+): string {
+  if (
+    left.length === 0 ||
+    right.length === 0 ||
+    /\s$/.test(left) ||
+    /^\s/.test(right)
+  ) {
+    return left + right;
+  }
+
+  const tight = left + right;
+  const apart = [...segment(left, rules), ...segment(right, rules)];
+  const together = segment(tight, rules);
+  const same =
+    together.length === apart.length &&
+    together.every((chunk, index) => chunk === apart[index]);
+
+  return same ? tight : `${left} ${right}`;
+}

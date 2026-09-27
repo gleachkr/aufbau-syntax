@@ -60,7 +60,9 @@ One spec file per textbook system; no code per system.
 Early, but the layer stack is complete and tested end to end: three
 example specs (`forallx-calgary-2019`, `forallx-magnus`, `carnap-prop`),
 a behavioral corpus transcribed from the parsers this library replaces,
-round-trip laws for both print modes, an acceptance test in which the real
+a round-trip law for both print modes checked over random terms on every
+spec and corpus file (`tests/round-trip.test.ts`), an acceptance test in
+which the real
 Aufbau compiler parses this library's engine output and certifies it
 tree-identical to hand-written spellings (`tests/engine-align.test.ts`),
 and a monotonicity suite pinning the property the delimiter design exists
