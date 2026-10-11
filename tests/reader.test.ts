@@ -436,6 +436,45 @@ axiom plain: $ t $;`,
     expect(ids(twice)).toEqual(["duplicate_declaration"]);
   });
 
+  test("the engine's @fallback is read onto the rule, and left foreign", () => {
+    const { spec, diagnostics } = parseSpec(
+      `${WFF}term t: wff;
+axiom and_elim_l: $ t $;
+--| @fallback and_elim_l
+--| @syntax alias ∧E
+axiom and_elim_r: $ t $;`,
+    );
+    expect(diagnostics).toEqual([]);
+    expect(spec.rules.get("and_elim_r")?.fallback).toBe("and_elim_l");
+    expect(spec.rules.get("and_elim_l")?.fallback).toBeNull();
+    // Still the engine's line, which it reads after the strip.
+    expect(
+      spec.rules.get("and_elim_r")?.foreignAnnotations.map((a) => a.text),
+    ).toEqual(["@fallback and_elim_l"]);
+  });
+
+  test("a @fallback names one earlier rule, as the engine requires", () => {
+    // Forwards, to itself, or to nothing: a chain that could loop or dangle.
+    const later = parseSpec(
+      `${WFF}term t: wff;\n--| @fallback b\naxiom a: $ t $;\naxiom b: $ t $;`,
+    );
+    expect(ids(later)).toEqual(["fallback_unknown"]);
+    expect(later.spec.rules.get("a")?.fallback).toBeNull();
+    expect(
+      ids(parseSpec(`${WFF}term t: wff;\n--| @fallback a\naxiom a: $ t $;`)),
+    ).toEqual(["fallback_unknown"]);
+    expect(
+      ids(parseSpec(`${WFF}term t: wff;\n--| @fallback\naxiom a: $ t $;`)),
+    ).toEqual(["fallback_unknown"]);
+
+    // Two on one rule: the first stands.
+    const twice = parseSpec(
+      `${WFF}term t: wff;\naxiom a: $ t $;\naxiom b: $ t $;\n--| @fallback a\n--| @fallback b\naxiom c: $ t $;`,
+    );
+    expect(ids(twice)).toEqual(["fallback_duplicate"]);
+    expect(twice.spec.rules.get("c")?.fallback).toBe("a");
+  });
+
   test("a @vars token cannot also be a declared term", () => {
     const conflict = parseSpec(`--| @vars a b\nsort wff;\nterm a: wff;`);
     expect(ids(conflict)).toEqual(["vars_term_conflict"]);

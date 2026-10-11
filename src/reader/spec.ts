@@ -96,6 +96,13 @@ export interface CoercionInfo {
 export interface RuleInfo {
   /** In declaration order; never contains the rule's own name. */
   readonly aliases: readonly string[];
+  /**
+   * The rule the engine retries this one with when it fails to apply, read
+   * from the engine's own `@fallback` annotation (which stays in
+   * `foreignAnnotations` — it is the engine's, we only listen in). Always an
+   * earlier rule, so following the chain ends; `null` without one.
+   */
+  readonly fallback: string | null;
   readonly foreignAnnotations: readonly Annotation[];
   readonly kind: "axiom" | "theorem";
   readonly name: string;
@@ -209,6 +216,9 @@ const TEMPLATES: Record<string, string> = {
   alias_is_rule_name:
     "{alias} is already the name of a rule, so it cannot be an alias",
   alias_duplicate: "{alias} already names {rule}",
+  fallback_unknown:
+    "@fallback {rule} does not name an earlier axiom or theorem",
+  fallback_duplicate: "a rule may carry only one @fallback",
   delimiter_unknown:
     "delimiter {token} is neither a notation token, a bracket, nor a lexicon name, so no input can ever be read as it",
   delimiter_token_not_delimited:
@@ -682,8 +692,41 @@ export function parseSpec(source: string): SpecParse {
           break;
         }
 
+        // The engine's `@fallback` is read like `@vars`: the line stays
+        // foreign, and the reader checks what the engine would, so a chain
+        // a consumer follows always points backwards and ends.
+        let fallback: string | null = null;
+        let fallbacks = 0;
+
+        for (const annotation of foreign) {
+          const [head, target = ""] = annotation.text.trim().split(/\s+/);
+
+          if (head !== "@fallback") {
+            continue;
+          }
+
+          fallbacks += 1;
+
+          if (fallbacks > 1) {
+            report(diagnostics, "fallback_duplicate", {}, annotation.span);
+            continue;
+          }
+
+          if (rules.has(target)) {
+            fallback = target;
+          } else {
+            report(
+              diagnostics,
+              "fallback_unknown",
+              { rule: target },
+              annotation.span,
+            );
+          }
+        }
+
         rules.set(statement.name, {
           aliases: [],
+          fallback,
           roles: [],
           foreignAnnotations: foreign,
           kind: statement.kind,

@@ -4,8 +4,8 @@
 Aufbau uses for `@acui`, `@congr`, `@rewrite`, `@vars` and the rest. One annotation per
 line, attached to the statement that follows it. Anything that is not
 `@syntax` is *foreign*: preserved as data, never interpreted here — with
-one deliberate exception, `@vars`, which is read *and* preserved (see
-below). Before a spec is handed to the Aufbau engine (which rejects
+two deliberate exceptions, `@vars` and `@fallback`, which are read *and*
+preserved (see below). Before a spec is handed to the Aufbau engine (which rejects
 annotations it does not know), strip the `@syntax` lines with
 `stripSyntaxAnnotations`; everything else in the file is already the
 engine's language.
@@ -492,3 +492,26 @@ which the engine would refuse anyway and which would leave the table
 unable to say which declaration an alias meant. Repeating an alias on its
 own rule is idle. An `alias` line on anything but an axiom or theorem is
 `alias_target`.
+
+### The engine's `@fallback`
+
+A textbook rule the theory states as two axioms — ∧E, whose left and
+right sides are `and_elim_l` and `and_elim_r` — gets one citation name
+from the engine's own `@fallback`, not from a many-rule alias: the alias
+sits on the second axiom, which falls back to the first.
+
+```text
+axiom and_elim_l (ga: ctx) (ph ps: wff): $ ga ⊢ ph ∧ ps $ > $ ga ⊢ ph $;
+--| @fallback and_elim_l
+--| @syntax alias ∧E
+axiom and_elim_r (ga: ctx) (ph ps: wff): $ ga ⊢ ph ∧ ps $ > $ ga ⊢ ps $;
+```
+
+The reader listens in, as it does for `@vars`: the line stays in
+`foreignAnnotations` for the engine, and the target is recorded on
+`RuleInfo.fallback` (`null` without one), so a consumer that shows a rule
+can show the rest of its family without parsing annotation text. It
+checks what the engine requires — one `@fallback` per rule
+(`fallback_duplicate`, the first stands), naming an earlier axiom or
+theorem (`fallback_unknown`) — so following `fallback` from any rule
+always ends.

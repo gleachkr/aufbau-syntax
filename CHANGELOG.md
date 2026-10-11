@@ -2,6 +2,15 @@
 
 ## Unreleased
 
+**A rule's `@fallback` is data.** `RuleInfo.fallback` names the rule the
+engine retries a failed application with, read from the engine's own
+`@fallback` annotation, which stays foreign — `@vars` was the one such
+annotation the reader listened in on, and this is the second. The reader
+checks what the engine would: one per rule (`fallback_duplicate`), naming
+an earlier axiom or theorem (`fallback_unknown`), so a chain always ends.
+A consumer showing ∧E as both its axioms no longer has to match
+annotation text.
+
 **Printing then parsing is the identity, for every term.** Display text
 used to set its pieces tight whatever the delimiters said, so under a spec
 without letter delimiters `∀x Cube(x)` printed as `∀xCube(x)` — one chunk
