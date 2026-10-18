@@ -2,6 +2,17 @@
 
 ## Unreleased
 
+**Display resets where the sort changes.** Under `drop-outer-parens` a
+formula is now outermost wherever the constructor above it returns
+another sort, not only at the top of the printed term, so a signed row
+prints as the book writes it: `𝕋 A ∧ B`, not `𝕋(A ∧ B)`, and a sequent
+`A ∧ B; C ⊢ D`. An operator of the formula's own sort keeps the pair
+(`𝔽 ¬(A ∧ B)`), and the precedence check still brackets whatever would
+not read back bare. A notation that changes sort is spaced as a
+connective is — `𝕋 A`, `1.1 𝔽 □A`, `Γ ⊢ A`, and `a = b`, which was
+`a=b`. And a notation token declared a delimiter on one side only hugs
+that side and stands off the other: a right-only comma prints `R(a, b)`.
+
 **A rule's `@fallback` is data.** `RuleInfo.fallback` names the rule the
 engine retries a failed application with, read from the engine's own
 `@fallback` annotation, which stays foreign — `@vars` was the one such

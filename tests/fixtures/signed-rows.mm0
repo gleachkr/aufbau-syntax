@@ -1,0 +1,62 @@
+-- Signed rows over a small propositional language, with sequents of them:
+-- the shapes where the sort changes above a formula. The signs bind looser
+-- than every connective, as Open Logic's do, so `𝕋 A ∧ B` is the row of a
+-- conjunction; `■` binds tighter, so its operand keeps its brackets. The
+-- comma and the context join are right delimiters only, and `•` a left one.
+--| @syntax delimiter $ A B C R a b $
+--| @syntax delimiter $ ( ) ¬ ∧ → = 𝕋 𝔽 ■ @ 1 ⊢ $
+--| @syntax delimiter $ ( $ $ ) , ; $
+--| @syntax delimiter $ • $ $ ) $
+--| @syntax brackets ( )
+--| @syntax display drop-outer-parens
+delimiter $ ( ) $;
+
+provable sort wff;
+sort tm;
+sort seq;
+sort row;
+sort pfx;
+sort ctx;
+sort jdg;
+
+term a: tm;
+term b: tm;
+term t2s (t: tm): seq;
+coercion t2s: tm > seq;
+term sc (s t: seq): seq;
+infixl sc: $,$ prec 10;
+
+term A: wff;
+term B: wff;
+term C: wff;
+term R (s: seq): wff;
+
+term not (p: wff): wff;
+prefix not: $¬$ prec 40;
+term and (p q: wff): wff;
+infixr and: $∧$ prec 30;
+term imp (p q: wff): wff;
+infixr imp: $→$ prec 20;
+term eq (s t: tm): wff;
+infixl eq: $=$ prec 50;
+term cat (s t: tm): tm;
+infixl cat: $•$ prec 60;
+
+term tt (p: wff): row;
+prefix tt: $𝕋$ prec 6;
+term ff (p: wff): row;
+prefix ff: $𝔽$ prec 6;
+term sq (p: wff): row;
+prefix sq: $■$ prec 45;
+
+term one: pfx;
+notation one: pfx = ($1$:max);
+term at (w: pfx) (p: wff): row;
+infixl at: $@$ prec 6;
+
+term hyp (r: row): ctx;
+coercion hyp: row > ctx;
+term join (g d: ctx): ctx;
+infixl join: $;$ prec 5;
+term proves (g: ctx) (r: row): jdg;
+infixl proves: $⊢$ prec 1;

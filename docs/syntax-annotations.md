@@ -56,11 +56,14 @@ term f (s: seq): tm;
   and the **last declared is canonical** — it is what the printer writes.
   Put the ASCII forms first and the display glyph last.
 - **Spacing** is derived: the display printer spaces sentential
-  connectives (infix closed over a `provable` sort: `P ∧ Q`) and sets
-  everything else as tight as the surface delimiters allow (`¬P`, `∀x`,
-  `a=b`, `R(a,b)`). Where two pieces would run together into one chunk —
-  `∀x` against `Cube(x)` in a spec with no letter delimiters — they keep
-  a space (`∀x Cube(x)`).
+  connectives (infix closed over a `provable` sort: `P ∧ Q`) and any
+  notation that takes its operands to another sort, returning none of
+  theirs (`a = b`, `𝕋 A`, `Γ ⊢ A`). Everything else is set as tight as
+  the surface delimiters allow (`¬P`, `∀x`, `R(a,b)`). Where two pieces
+  would run together into one chunk — `∀x` against `Cube(x)` in a spec
+  with no letter delimiters — they keep a space (`∀x Cube(x)`). A
+  notation token declared a delimiter on one side only overrides both:
+  see the two sides under `delimiter` below.
 - **Display parenthesization** is derived: connective compounds are always
   parenthesized (the textbook full-paren convention); everything else
   gets exactly the parentheses the parser needs, read from its own
@@ -111,6 +114,17 @@ left-only entry closes the chunk it ends but does not break a run that
 arrives at it, and a right-only entry does the reverse. Where two entries
 could match at one position, the longest spelling wins, so `<->` is one
 chunk and not `<`, `-`, `>`.
+
+The display printer reads a one-sided notation token's declaration as
+layout too: the token hugs the side it breaks at and stands off the
+other. A right-only comma prints `R(a, b)` and a right-only context join
+`A; B ⊢ C`, even where every letter is a delimiter and `R(a,b)` would
+read back just as well. The cost is on the reading side: nothing breaks
+after a right-only entry, so in a spec whose names are not delimiters a
+student must type the space the printer writes (`a, b`, not `a,b`). The
+union with the theory's own `delimiter` statement is per side, so an
+entry that statement lists on both sides stays two-sided here, and has to
+move to its right list as well.
 
 One generalization beyond MM0: an entry may be **any string**, not a
 single byte. That is the whole reason this annotation exists rather than
@@ -315,7 +329,13 @@ neither; see `role` below for keeping the choice in the spec.
 ## `display <option>`
 
 - `drop-outer-parens` — remove the one redundant pair the full-paren
-  convention leaves around the whole formula.
+  convention leaves around the whole formula. A formula is outermost
+  wherever the sort changes above it, not only at the top: under a sign
+  (`𝕋 A ∧ B`), either side of a turnstile, or as one entry of a context
+  (`A ∧ B; C ⊢ D`, through the coercion that makes a formula a context).
+  An operator of the formula's own sort keeps its operand's pair, so
+  `¬(A ∧ B)` and `∀x(Fx → Gx)` are unchanged, and a pair the parser needs
+  stays — a sign declared tighter than the connective writes `■ (A ∧ B)`.
 - `rotate-brackets <pairs…>` — reserved: accepted and carried on the spec,
   not yet honored by the printer.
 

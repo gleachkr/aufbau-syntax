@@ -302,9 +302,9 @@ describe("sequent contexts glue through a coercion", () => {
       return printTerm(sequent, result.term, "display");
     };
 
-    expect(shown("P Q ⊢ R")).toBe("PQ⊢R");
-    expect(shown("P ∧ Q R ⊢ R")).toBe("P∧QR⊢R");
-    expect(shown("P Q ∧ R ⊢ P")).toBe("PQ∧R⊢P");
+    expect(shown("P Q ⊢ R")).toBe("PQ ⊢ R");
+    expect(shown("P ∧ Q R ⊢ R")).toBe("P∧QR ⊢ R");
+    expect(shown("P Q ∧ R ⊢ P")).toBe("PQ∧R ⊢ P");
 
     for (const source of ["P Q ⊢ R", "P ∧ Q R ⊢ R", "P Q ∧ R ⊢ P"]) {
       const result = sequent.parse(source);
@@ -508,15 +508,15 @@ describe("printing glued terms", () => {
       return printTerm(group, result.term, "display");
     };
 
-    expect(shown("ab=c")).toBe("ab=c");
-    expect(shown("a*b=c")).toBe("ab=c");
+    expect(shown("ab=c")).toBe("ab = c");
+    expect(shown("a*b=c")).toBe("ab = c");
     expect(shown("abc", "g")).toBe("abc");
     // Right-nested under an infixl combiner: gluing bare would reparse
     // left-folded, so the visible token returns with the nesting held.
     expect(shown("a(bc)", "g")).toBe("a*(bc)");
     // A tighter prefix glues whole: `⁻¹a` rebinds identically, since the
     // arc at 70 cannot reach into an operand parsed at 90.
-    expect(shown("⁻¹ab=c")).toBe("⁻¹ab=c");
+    expect(shown("⁻¹ab=c")).toBe("⁻¹ab = c");
   });
 
   test("the display form is itself legal input, and stable", () => {

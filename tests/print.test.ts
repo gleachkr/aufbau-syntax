@@ -1,4 +1,5 @@
 import { describe, expect, test } from "bun:test";
+import { readFileSync } from "node:fs";
 import { readFile } from "node:fs/promises";
 import type { Spec, Term } from "../src/index";
 import { parseSpec, printTerm, SurfaceLanguage } from "../src/index";
@@ -7,9 +8,11 @@ import { parseSpec, printTerm, SurfaceLanguage } from "../src/index";
  * Display expectations transcribed from the incumbent
  * `formulaToDisplay`/`formulaToString` suites (carnap-server
  * `tests/first-order-syntax.test.ts`, "how a formula is shown to a
- * reader"), themselves taken from runs of the original Carnap. One marked
- * deviation: `a != b` displays as `a≠b` through the `neq` def's own
- * canonical token, where Carnap unfolded it to `¬a=b`.
+ * reader"), themselves taken from runs of the original Carnap. Two marked
+ * deviations: `a != b` displays as `a ≠ b` through the `neq` def's own
+ * canonical token, where Carnap unfolded it to `¬a=b`; and identity is
+ * spaced, as every notation that changes sort is, where Carnap wrote
+ * `a=b`.
  */
 
 async function load(name: string): Promise<{
@@ -83,21 +86,23 @@ describe("Calgary display", () => {
   });
 
   test("a quantifier or a negation is written straight onto what follows", async () => {
-    expect(await display("AxAyf(x,y) = f(y,x)")).toBe("∀x∀yf(x,y)=f(y,x)");
-    expect(await display("ExEy~x = y")).toBe("∃x∃y¬x=y");
+    expect(await display("AxAyf(x,y) = f(y,x)")).toBe("∀x∀yf(x,y) = f(y,x)");
+    expect(await display("ExEy~x = y")).toBe("∃x∃y¬x = y");
   });
 
-  test("identity closes up; inequality keeps its own sign", async () => {
-    expect(await display("a = b")).toBe("a=b");
+  test("identity is spaced, as a sort-changing infix; inequality keeps its own sign", async () => {
+    // Deviation from Carnap, which set identity tight: `=` takes terms to
+    // a formula, and a notation that changes sort is spaced.
+    expect(await display("a = b")).toBe("a = b");
     // Deviation from Carnap (which unfolded to ¬a=b): the neq def has a
     // canonical token of its own, and prints through it.
-    expect(await display("a != b")).toBe("a≠b");
+    expect(await display("a != b")).toBe("a ≠ b");
   });
 
   test("predicates keep their parentheses; a sentence letter has none", async () => {
     expect(await display("R(a,b)")).toBe("R(a,b)");
     expect(await display("P")).toBe("P");
-    expect(await display("f(a) = b")).toBe("f(a)=b");
+    expect(await display("f(a) = b")).toBe("f(a) = b");
   });
 
   test("the display form is itself legal input, and stable", async () => {
@@ -185,5 +190,79 @@ describe("prop display", () => {
         }
       }
     }
+  });
+});
+
+describe("display where the sort changes", () => {
+  const source = readFileSync(
+    new URL("./fixtures/signed-rows.mm0", import.meta.url).pathname,
+    "utf8",
+  );
+
+  function signed(text: string): SurfaceLanguage {
+    const { spec, diagnostics } = parseSpec(text);
+
+    expect(diagnostics).toEqual([]);
+
+    return new SurfaceLanguage(spec);
+  }
+
+  const dropped = signed(source);
+  const kept = signed(
+    source.replace("--| @syntax display drop-outer-parens\n", ""),
+  );
+
+  function shown(language: SurfaceLanguage, text: string, sort: string) {
+    const result = language.parse(text, { sort });
+
+    if (!result.ok) {
+      throw new Error(`Expected '${text}' to parse.`);
+    }
+
+    const printed = printTerm(language, result.term, "display");
+    const reparsed = language.parse(printed, { sort });
+
+    expect(reparsed.ok, printed).toBe(true);
+
+    if (reparsed.ok) {
+      expect(printTerm(language, reparsed.term, "display")).toBe(printed);
+    }
+
+    return printed;
+  }
+
+  test("a formula under a sign is outermost there, and the sign is spaced", () => {
+    expect(shown(dropped, "𝕋 A ∧ B", "row")).toBe("𝕋 A ∧ B");
+    expect(shown(dropped, "𝕋 (A ∧ B) → C", "row")).toBe("𝕋 (A ∧ B) → C");
+    expect(shown(dropped, "1 @ A ∧ B", "row")).toBe("1 @ A ∧ B");
+  });
+
+  test("an operator of the formula's own sort keeps its operand's brackets", () => {
+    expect(shown(dropped, "𝔽 ¬(A ∧ B)", "row")).toBe("𝔽 ¬(A ∧ B)");
+  });
+
+  test("a sign tighter than the connective keeps them too", () => {
+    expect(shown(dropped, "■(A ∧ B)", "row")).toBe("■ (A ∧ B)");
+  });
+
+  test("a context's formulas are outermost through the coercion", () => {
+    expect(shown(dropped, "𝕋 A ∧ B; 𝔽 C ⊢ 𝕋 A", "jdg")).toBe(
+      "𝕋 A ∧ B; 𝔽 C ⊢ 𝕋 A",
+    );
+  });
+
+  test("a one-sided delimiter hugs the side it breaks at", () => {
+    // Every letter is a delimiter, so `R(a,b)` and `a•b` would read back
+    // tight; the spacing is the declaration's, not the reader's need.
+    expect(shown(dropped, "R(a,b) ∧ a•b = b", "wff")).toBe(
+      "R(a, b) ∧ a •b = b",
+    );
+  });
+
+  test("without drop-outer-parens every connective keeps its pair", () => {
+    expect(shown(kept, "𝕋 A ∧ B", "row")).toBe("𝕋 (A ∧ B)");
+    expect(shown(kept, "𝕋 A ∧ B; 𝔽 C ⊢ 𝕋 A", "jdg")).toBe(
+      "𝕋 (A ∧ B); 𝔽 C ⊢ 𝕋 A",
+    );
   });
 });

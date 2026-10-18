@@ -81,6 +81,13 @@ const SOURCES: readonly (readonly [string, string])[] = [
   ["forallx-calgary-2019", specFile("forallx-calgary-2019")],
   ["forallx-magnus", specFile("forallx-magnus")],
   ["names without letter delimiters", NAMES_SPEC],
+  [
+    "signed rows",
+    readFileSync(
+      new URL("./fixtures/signed-rows.mm0", import.meta.url).pathname,
+      "utf8",
+    ),
+  ],
   ...corpusFiles().map((file) => [file, corpusSource(file)] as const),
 ];
 
