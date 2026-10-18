@@ -2,6 +2,8 @@
 
 ## Unreleased
 
+## 0.0.6 — 2026-10-18
+
 **Elab rules a text cannot use cost nothing.** A rule with a literal the
 text does not contain cannot match, so both directions now skip its pass.
 Output is unchanged; a forallx UBC formula, with two hundred subscript
