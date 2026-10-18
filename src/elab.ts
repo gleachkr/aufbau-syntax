@@ -293,6 +293,20 @@ function applyRule(
   separator: " " | "",
   scope: Scope,
 ): Elaborated {
+  // A literal matches a whole chunk, and a chunk is a slice of the text, so
+  // a rule with a literal the text does not contain cannot match anywhere.
+  // A pass that matches nothing returns its input unchanged, so skipping it
+  // is exact — and it makes the many rules a given text cannot use (UBC's
+  // two hundred subscripts) nearly free.
+  if (
+    pattern.some(
+      (element) =>
+        element.kind === "literal" && !text.includes(element.token),
+    )
+  ) {
+    return { text, origin };
+  }
+
   const originOf = (index: number): number =>
     origin[index] ?? origin[origin.length - 1] ?? 0;
   let out = "";

@@ -2,6 +2,11 @@
 
 ## Unreleased
 
+**Elab rules a text cannot use cost nothing.** A rule with a literal the
+text does not contain cannot match, so both directions now skip its pass.
+Output is unchanged; a forallx UBC formula, with two hundred subscript
+rules, reads and prints in about a tenth of a millisecond, down from 3–20.
+
 **Defs unfold.** `unfoldDefinitions(language, term)` replaces every `def`
 application with its definiens, the def's binders filled by the arguments,
 so a consumer comparing terms by shape sees what the engine sees: `a ≠ b`

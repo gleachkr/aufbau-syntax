@@ -388,7 +388,10 @@ well as the notations and the lexicon.
 Forward, each rule makes **one left-to-right pass** in declaration order,
 resuming after each replacement — no fixpoints, termination by
 construction. An origin map carries every offset back to the source, so
-diagnostics and term spans point at what the writer typed.
+diagnostics and term spans point at what the writer typed. A rule with a
+literal the text does not contain is skipped without a pass, so a spec can
+carry many rules that a given formula never uses (forallx UBC's two hundred
+subscripts) at almost no cost.
 
 **What that commits you to.** Three properties, none of which the parser
 has — the parser backtracks over ambiguity, but only over what reaches it,

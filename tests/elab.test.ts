@@ -374,6 +374,38 @@ describe("a pattern literal is any chunk, declared or not", () => {
   });
 });
 
+describe("a rule is skipped only on literals its own input lacks", () => {
+  test("a later rule matches a literal an earlier rule emitted", () => {
+    // `!` is in no input; only the first rule writes it. A rule whose
+    // literals are not in the text is skipped, so the check has to be made
+    // against what the earlier rules left, not against the source.
+    const { spec, diagnostics } = parseSpec(`
+--| @syntax elab $ A ?x:var $ => $ ! ?x $ input-only
+--| @syntax elab $ ! ?x:var $ => $ ∀ ?x $ input-only
+--| @syntax delimiter $ ( ) x y ∀ $
+delimiter $ ( ) $;
+provable sort wff;
+--| @vars x y
+sort var;
+term F (x: var): wff;
+term all {x: var} (p: wff x): wff;
+prefix all: $∀$ prec 50;
+`);
+
+    expect(diagnostics).toEqual([]);
+
+    const language = new SurfaceLanguage(spec);
+    const sugared = language.parse("AxF x");
+    const plain = language.parse("∀xF x");
+
+    expect(sugared.ok && plain.ok).toBe(true);
+
+    if (sugared.ok && plain.ok) {
+      expect(sexpr(sugared.term)).toBe(sexpr(plain.term));
+    }
+  });
+});
+
 describe("elab literals are validated at read time", () => {
   const BASE = `
 --| @syntax delimiter $ ( ) x y ∀ $
