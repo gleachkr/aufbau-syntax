@@ -60,6 +60,12 @@ export interface TermInfo {
   readonly foreignAnnotations: readonly Annotation[];
   /** True when this came from a `def` rather than a `term`. */
   readonly isDef: boolean;
+  /**
+   * A def's body: its definiens as engine text, over `binders` and its own
+   * dot-dummies. Null for a `term`, and for a def whose definiens the proof
+   * file supplies. `unfoldDefinitions` reads it.
+   */
+  readonly definition: Definition | null;
   /** `@syntax juxtaposed`: adjacency of its sort's leaves denotes it. */
   readonly juxtaposed: boolean;
   /**
@@ -78,6 +84,12 @@ export interface TermInfo {
   readonly returnSort: string;
   readonly roles: readonly string[];
   readonly span: Span;
+}
+
+/** A def's definiens and the dot-dummies it binds. */
+export interface Definition {
+  readonly dummies: readonly Binder[];
+  readonly text: string;
 }
 
 export interface CoercionInfo {
@@ -610,6 +622,13 @@ export function parseSpec(source: string): SpecParse {
           elided: false,
           foreignAnnotations: foreign,
           isDef: statement.kind === "def",
+          definition:
+            statement.kind === "def" && statement.definiens !== null
+              ? {
+                  dummies: statement.binders.filter((binder) => binder.dummy),
+                  text: statement.definiens.text,
+                }
+              : null,
           juxtaposed: false,
           juxtaposedCompound: false,
           name: statement.name,

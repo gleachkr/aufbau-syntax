@@ -2,6 +2,14 @@
 
 ## Unreleased
 
+**Defs unfold.** `unfoldDefinitions(language, term)` replaces every `def`
+application with its definiens, the def's binders filled by the arguments,
+so a consumer comparing terms by shape sees what the engine sees: `a ≠ b`
+and `¬ a = b` are one formula. A dot-dummy an argument also names is
+renamed from its sort's `@vars` pool rather than capturing it, and a term
+with no def in it comes back as the same object. `TermInfo.definition`
+carries the definiens it reads.
+
 **Display resets where the sort changes.** Under `drop-outer-parens` a
 formula is now outermost wherever the constructor above it returns
 another sort, not only at the top of the printed term, so a signed row

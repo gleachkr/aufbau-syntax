@@ -36,6 +36,7 @@ export type {
 } from "./reader/annotations.js";
 export type {
   CoercionInfo,
+  Definition,
   NotationInfo,
   RuleInfo,
   SortInfo,
@@ -67,5 +68,6 @@ export type { Reading, ScanPoint, Scope } from "./scan.js";
 export { Scanner } from "./scan.js";
 export type { AppTerm, Fixity, Term, VariableTerm } from "./term.js";
 export { walkTerm } from "./term.js";
+export { unfoldDefinitions } from "./unfold.js";
 export type { NameRef, Vocabulary } from "./vocabulary.js";
 export { surfaceVocabulary } from "./vocabulary.js";
