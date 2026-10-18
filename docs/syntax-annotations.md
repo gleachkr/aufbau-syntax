@@ -147,8 +147,13 @@ Only when the spec declares at least one `@syntax delimiter`; without one
 none of this can bite.
 
 - `delimiter_unknown` (error) — an entry that is neither a notation
-  token, a grouping bracket, nor a lexicon name. It would cut input into
-  a piece the parser must then reject: a boundary with nothing behind it.
+  token, a grouping bracket, a lexicon name, nor an elab literal. It would
+  cut input into a piece the parser must then reject: a boundary with
+  nothing behind it. An elab literal counts because the layer reads that
+  chunk before the parser does — a pattern literal always, a template
+  literal when the rule is not `input-only` and delaboration matches it —
+  and a delimiter is the only way to give a literal glued to a name its
+  own chunk: `$ ?t:tm ' $` fires on `x'` only if `'` delimits.
 - `delimiter_token_not_delimited` (warning) — a notation token that is
   not itself a delimiter. Advice, not breakage: the token still reads
   wherever something else bounds it, so with the letters declared `P->Q`
@@ -373,7 +378,8 @@ chunk at the scan point, and the surface delimiters fixed that chunk's
 boundaries before anything was looked up. A literal the delimiters would
 split is reported at read time (`elab_literal_split`) rather than left to
 match nothing; write it as separate elements, as the rules here already
-write `$ ( ?x:var ) $`. A literal containing `?` is reported too
+write `$ ( ?x:var ) $`. The converse is allowed: a literal may itself be a
+delimiter, which is how it gets its own chunk where it is glued to a name. A literal containing `?` is reported too
 (`elab_literal_looks_like_capture`) — a capture is its own element, and
 the pattern is split on whitespace, so `$ (?x:var) $` is one literal and
 never what was meant.

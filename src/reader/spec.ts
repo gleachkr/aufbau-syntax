@@ -232,7 +232,7 @@ const TEMPLATES: Record<string, string> = {
     "@fallback {rule} does not name an earlier axiom or theorem",
   fallback_duplicate: "a rule may carry only one @fallback",
   delimiter_unknown:
-    "delimiter {token} is neither a notation token, a bracket, nor a lexicon name, so no input can ever be read as it",
+    "delimiter {token} is neither a notation token, a bracket, a lexicon name, nor an elab literal, so no input can ever be read as it",
   delimiter_token_not_delimited:
     "{token} is not a surface delimiter; it is only read when whitespace or a delimiter bounds it, so it will run into an adjacent token",
   delimiter_unreachable_name:
@@ -368,10 +368,21 @@ function checkSurfaceDelimiters(
   ]);
 
   // A delimiter nothing can be classified as cuts input into pieces the
-  // parser must then reject — a boundary with no meaning behind it.
+  // parser must then reject — a boundary with no meaning behind it. An elab
+  // literal is a meaning: the layer reads that chunk before the parser does,
+  // and a delimiter is the only way to give it its own chunk when it is
+  // glued to a name (`x'`).
+  const literals = new Set(
+    [...matchedLiterals(spec)].map(({ token }) => token),
+  );
+
   for (const { entries, span } of declarations) {
     for (const entry of entries) {
-      if (!vocabulary.tokens.has(entry) && !vocabulary.names.has(entry)) {
+      if (
+        !vocabulary.tokens.has(entry) &&
+        !vocabulary.names.has(entry) &&
+        !literals.has(entry)
+      ) {
         report(diagnostics, "delimiter_unknown", { token: entry }, span);
       }
     }
@@ -435,10 +446,6 @@ function checkSurfaceDelimiters(
  * of the layer — but it is matched one chunk at a time, so a literal the
  * delimiters split can never match anything, and a rule that quietly does
  * nothing is the failure this reader exists to prevent.
- *
- * Template literals are checked too, for every rule that is not
- * `input-only`: delaboration runs the rule inverted, where the template's
- * literals *are* the pattern.
  */
 function checkElabLiterals(spec: Spec, diagnostics: Diagnostic[]): void {
   const rules = delimiterRules(spec.surfaceDelimiters);
@@ -467,20 +474,28 @@ function checkElabLiterals(spec: Spec, diagnostics: Diagnostic[]): void {
     }
   };
 
+  for (const { token, span } of matchedLiterals(spec)) {
+    check(token, span);
+  }
+}
+
+/**
+ * Every elab literal some direction matches against text: each rule's
+ * pattern literals, and the template literals of every rule that is not
+ * `input-only`, since delaboration runs the rule inverted, where the
+ * template's literals *are* the pattern.
+ */
+function* matchedLiterals(
+  spec: Spec,
+): Generator<{ readonly token: string; readonly span: Span }> {
   for (const rule of spec.elabRules) {
-    for (const element of rule.pattern) {
-      if (element.kind === "literal") {
-        check(element.token, rule.span);
-      }
-    }
+    const elements = rule.inputOnly
+      ? rule.pattern
+      : [...rule.pattern, ...rule.template];
 
-    if (rule.inputOnly) {
-      continue;
-    }
-
-    for (const element of rule.template) {
+    for (const element of elements) {
       if (element.kind === "literal") {
-        check(element.token, rule.span);
+        yield { token: element.token, span: rule.span };
       }
     }
   }

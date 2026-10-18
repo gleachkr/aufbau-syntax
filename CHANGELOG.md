@@ -7,6 +7,11 @@ text does not contain cannot match, so both directions now skip its pass.
 Output is unchanged; a forallx UBC formula, with two hundred subscript
 rules, reads and prints in about a tenth of a millisecond, down from 3–20.
 
+**An elab literal may be a delimiter.** `delimiter_unknown` no longer
+refuses an entry that only an elab rule reads — a pattern literal, or the
+template literal of a rule delaboration runs — so `$ ?t:tm ' $` can fire
+on an unspaced `x'` once `'` delimits.
+
 **Defs unfold.** `unfoldDefinitions(language, term)` replaces every `def`
 application with its definiens, the def's binders filled by the arguments,
 so a consumer comparing terms by shape sees what the engine sees: `a ≠ b`

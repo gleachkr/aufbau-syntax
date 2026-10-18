@@ -453,3 +453,60 @@ prefix all: $∀$ prec 50;
     ).toEqual([]);
   });
 });
+
+describe("an elab literal may be a delimiter", () => {
+  /**
+   * A postfix literal glued to a name (`x'`) is one chunk unless it
+   * delimits, so a delimiter is the only way to let the rule fire on
+   * unspaced input — and the delimiter check must count the literal as
+   * something input can be read as.
+   */
+  const SUCCESSOR = `
+delimiter $ ( ) $;
+provable sort wff;
+--| @vars x y
+sort tm;
+term S (t: tm): tm;
+term eq (s t: tm): wff;
+infixl eq: $=$ prec 50;
+`;
+
+  function read(annotations: string) {
+    return parseSpec(`${annotations}\n${SUCCESSOR}`);
+  }
+
+  test("a pattern literal is readable, so it may delimit", () => {
+    const { spec, diagnostics } = read(
+      [
+        "--| @syntax delimiter $ ( ) ' = $",
+        "--| @syntax elab $ ?t:tm ' $ => $ S ?t $ input-only",
+      ].join("\n"),
+    );
+
+    expect(diagnostics).toEqual([]);
+
+    const language = new SurfaceLanguage(spec);
+    const glued = language.parse("x' = y");
+    const plain = language.parse("S x = y");
+
+    expect(glued.ok && plain.ok).toBe(true);
+
+    if (glued.ok && plain.ok) {
+      expect(sexpr(glued.term)).toBe(sexpr(plain.term));
+    }
+  });
+
+  test("a template literal counts only where delaboration matches it", () => {
+    // Inverted, an invertible rule's template is the pattern, so its
+    // literal `!` is read; an input-only rule's template is only written.
+    const ids = (rule: string) =>
+      read(`--| @syntax delimiter $ ( ) ! = $\n${rule}`).diagnostics.map(
+        (d) => d.id,
+      );
+
+    expect(ids("--| @syntax elab $ S ?t:tm $ => $ ! ?t $")).toEqual([]);
+    expect(
+      ids("--| @syntax elab $ S ?t:tm $ => $ ! ?t $ input-only"),
+    ).toEqual(["delimiter_unknown"]);
+  });
+});
