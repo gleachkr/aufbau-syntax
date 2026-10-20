@@ -54,6 +54,12 @@ export interface SortInfo {
 }
 
 export interface TermInfo {
+  /**
+   * The laws the engine normalizes this term modulo, read from its own
+   * `@acui` annotation (which stays in `foreignAnnotations` — it is the
+   * engine's, we only listen in). Null without one.
+   */
+  readonly acui: Acui | null;
   readonly binders: readonly Binder[];
   /** `@syntax elided`: supplied when an argument of its sort is missing. */
   readonly elided: boolean;
@@ -84,6 +90,38 @@ export interface TermInfo {
   readonly returnSort: string;
   readonly roles: readonly string[];
   readonly span: Span;
+}
+
+/**
+ * A binary term's `@acui <assoc> <comm> <unit> <idem>`: the engine reads
+ * nested applications of it as one flat list, rebuilt right-associated,
+ * sorted where `comm` is named and deduplicated where `idem` is. Each law
+ * is the rule stating it; `comm` and `idem` are null where the annotation
+ * writes `_` (or, for `idem`, nothing). The term takes two arguments of
+ * its own sort, and `unit` is a constant of that sort declared before it,
+ * as the engine requires.
+ */
+export interface Acui {
+  readonly assoc: string;
+  readonly comm: string | null;
+  readonly idem: string | null;
+  readonly unit: string;
+}
+
+/**
+ * A sort's `@relation <sort> <term> <refl> <trans> <symm> <transport>`:
+ * the equivalence the engine reasons modulo at that sort, the binary
+ * `term` with the rules stating its laws. `transport` (`rel a b > a > b`)
+ * is null where the annotation writes `_`, as it does for a sort that is
+ * not provable.
+ */
+export interface Relation {
+  readonly refl: string;
+  readonly sort: string;
+  readonly symm: string;
+  readonly term: string;
+  readonly trans: string;
+  readonly transport: string | null;
 }
 
 /** A def's definiens and the dot-dummies it binds. */
@@ -169,6 +207,13 @@ export interface Spec {
    * is not an alias is already the engine's.
    */
   readonly ruleAliases: ReadonlyMap<string, string>;
+  /**
+   * Each sort's `@relation`, keyed by the sort, read from the engine's own
+   * annotation on the axiom or theorem it sits on (the line stays foreign).
+   * A second for one sort is an error (`relation_duplicate`): the engine
+   * refuses the file.
+   */
+  readonly relations: ReadonlyMap<string, Relation>;
   /** Every axiom and theorem, keyed by name. */
   readonly rules: ReadonlyMap<string, RuleInfo>;
   readonly sorts: ReadonlyMap<string, SortInfo>;
@@ -231,6 +276,12 @@ const TEMPLATES: Record<string, string> = {
   fallback_unknown:
     "@fallback {rule} does not name an earlier axiom or theorem",
   fallback_duplicate: "a rule may carry only one @fallback",
+  acui_combiner:
+    "an @acui term must take two arguments of its own result sort",
+  acui_unit:
+    "@acui unit {unit} is not a constant of sort {sort} declared before it",
+  relation_duplicate:
+    "sort {sort} already has a @relation; the engine refuses a second",
   delimiter_unknown:
     "delimiter {token} is neither a notation token, a bracket, a lexicon name, nor an elab literal, so no input can ever be read as it",
   delimiter_token_not_delimited:
@@ -251,6 +302,74 @@ function report(
   diagnostics.push(
     diagnostic(id, TEMPLATES[id] ?? id, params, span, severity),
   );
+}
+
+/**
+ * A term's `@acui`, checked as the engine checks it on reading the line:
+ * a line short of three words is ignored, the term must take two regular
+ * arguments of its own sort, and the unit must be a constant of that sort
+ * declared earlier. The laws are checked by the engine once declared,
+ * which may be later or in a proof file, so they are not checked here. The
+ * engine keeps the last of several.
+ */
+function readAcui(
+  foreign: readonly Annotation[],
+  binders: readonly Binder[],
+  returnSort: string,
+  terms: ReadonlyMap<string, TermInfo>,
+  diagnostics: Diagnostic[],
+): Acui | null {
+  let acui: Acui | null = null;
+
+  for (const annotation of foreign) {
+    const [head, assoc, comm, unit, idem] = annotation.text
+      .trim()
+      .split(/\s+/);
+
+    if (
+      head !== "@acui" ||
+      assoc === undefined ||
+      comm === undefined ||
+      unit === undefined
+    ) {
+      continue;
+    }
+
+    if (
+      binders.length !== 2 ||
+      binders.some(
+        (binder) => binder.binds || binderSortOf(binder) !== returnSort,
+      )
+    ) {
+      report(diagnostics, "acui_combiner", {}, annotation.span);
+      continue;
+    }
+
+    const constant = terms.get(unit);
+
+    if (
+      constant === undefined ||
+      constant.binders.length !== 0 ||
+      constant.returnSort !== returnSort
+    ) {
+      report(
+        diagnostics,
+        "acui_unit",
+        { sort: returnSort, unit },
+        annotation.span,
+      );
+      continue;
+    }
+
+    acui = {
+      assoc,
+      comm: comm === "_" ? null : comm,
+      idem: idem === undefined || idem === "_" ? null : idem,
+      unit,
+    };
+  }
+
+  return acui;
 }
 
 /** The binder count an application must fill (bound and regular alike). */
@@ -510,6 +629,7 @@ export function parseSpec(source: string): SpecParse {
   const terms = new Map<string, TermInfo>();
   const coercions: CoercionInfo[] = [];
   const rules = new Map<string, RuleInfo>();
+  const relations = new Map<string, Relation>();
   const ruleAliases = new Map<string, string>();
   const notations: NotationInfo[] = [];
   const elabRules: ElabRule[] = [];
@@ -631,9 +751,11 @@ export function parseSpec(source: string): SpecParse {
         const arguments_ = statement.binders.filter(
           (binder) => !binder.dummy,
         );
+        const binders = [...arguments_, ...extra];
 
         terms.set(statement.name, {
-          binders: [...arguments_, ...extra],
+          acui: readAcui(foreign, binders, returnSort, terms, diagnostics),
+          binders,
           elided: false,
           foreignAnnotations: foreign,
           isDef: statement.kind === "def",
@@ -756,6 +878,46 @@ export function parseSpec(source: string): SpecParse {
               annotation.span,
             );
           }
+        }
+
+        // `@relation` likewise. The engine checks each law's shape once
+        // the law is declared, which may be later or in a proof file;
+        // what it refuses on reading the line is a second bundle for one
+        // sort, and a line short of six words it ignores.
+        for (const annotation of foreign) {
+          const [head, sort, term, refl, trans, symm, transport] =
+            annotation.text.trim().split(/\s+/);
+
+          if (
+            head !== "@relation" ||
+            sort === undefined ||
+            term === undefined ||
+            refl === undefined ||
+            trans === undefined ||
+            symm === undefined ||
+            transport === undefined
+          ) {
+            continue;
+          }
+
+          if (relations.has(sort)) {
+            report(
+              diagnostics,
+              "relation_duplicate",
+              { sort },
+              annotation.span,
+            );
+            continue;
+          }
+
+          relations.set(sort, {
+            refl,
+            sort,
+            symm,
+            term,
+            trans,
+            transport: transport === "_" ? null : transport,
+          });
         }
 
         rules.set(statement.name, {
@@ -1206,6 +1368,7 @@ export function parseSpec(source: string): SpecParse {
     lints,
     notations,
     elabRules,
+    relations,
     ruleAliases,
     rules,
     sorts,

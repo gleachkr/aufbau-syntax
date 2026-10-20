@@ -475,6 +475,107 @@ axiom and_elim_r: $ t $;`,
     expect(twice.spec.rules.get("c")?.fallback).toBe("a");
   });
 
+  test("the engine's @acui is read onto its term, and left foreign", () => {
+    const { spec, diagnostics } = parseSpec(`sort ctx;
+term emp: ctx;
+--| @acui ctx_assoc ctx_comm emp ctx_idem
+term join (g h: ctx): ctx;
+term nil: ctx;
+--| @acui seq_assoc _ nil _
+term seq (g h: ctx): ctx;
+--| @acui seq_assoc _ nil
+term cat (g h: ctx): ctx;`);
+
+    expect(diagnostics).toEqual([]);
+    expect(spec.terms.get("join")?.acui).toEqual({
+      assoc: "ctx_assoc",
+      comm: "ctx_comm",
+      idem: "ctx_idem",
+      unit: "emp",
+    });
+    expect(spec.terms.get("seq")?.acui).toEqual({
+      assoc: "seq_assoc",
+      comm: null,
+      idem: null,
+      unit: "nil",
+    });
+    // The engine reads a missing idempotence law as none.
+    expect(spec.terms.get("cat")?.acui?.idem).toBeNull();
+    expect(spec.terms.get("emp")?.acui).toBeNull();
+    expect(
+      spec.terms.get("join")?.foreignAnnotations.map((a) => a.text),
+    ).toEqual(["@acui ctx_assoc ctx_comm emp ctx_idem"]);
+  });
+
+  test("an @acui term and unit have the shapes the engine requires", () => {
+    const CTX = "sort ctx;\nsort other;\nterm emp: ctx;\nterm o: other;\n";
+    const acui = (line: string, term: string) =>
+      parseSpec(`${CTX}--| @acui a _ ${line}\n${term}`);
+
+    expect(ids(acui("emp _", "term f (g: ctx): ctx;"))).toEqual([
+      "acui_combiner",
+    ]);
+    expect(ids(acui("emp _", "term f (g: ctx) (h: other): ctx;"))).toEqual([
+      "acui_combiner",
+    ]);
+    expect(ids(acui("emp _", "term f {g: ctx} (h: ctx): ctx;"))).toEqual([
+      "acui_combiner",
+    ]);
+    expect(ids(acui("o _", "term f (g h: ctx): ctx;"))).toEqual([
+      "acui_unit",
+    ]);
+    expect(ids(acui("_ _", "term f (g h: ctx): ctx;"))).toEqual([
+      "acui_unit",
+    ]);
+    // Declared after the combiner is too late.
+    expect(
+      ids(
+        parseSpec(
+          "sort ctx;\n--| @acui a _ late _\nterm f (g h: ctx): ctx;\nterm late: ctx;",
+        ),
+      ),
+    ).toEqual(["acui_unit"]);
+    // Short of a unit, the engine ignores the line.
+    const short = acui("", "term f (g h: ctx): ctx;");
+    expect(ids(short)).toEqual([]);
+    expect(short.spec.terms.get("f")?.acui).toBeNull();
+  });
+
+  test("the engine's @relation is read per sort, once", () => {
+    const { spec, diagnostics } = parseSpec(`${WFF}sort nat;
+term bi (a b: wff): wff;
+term eq (a b: nat): wff;
+--| @relation wff bi biid bitr bisym mpbi
+axiom biid (a: wff): $ bi a a $;
+--| @relation nat eq eq_refl eq_trans eq_sym _
+--| @relation nat eq too few
+axiom eq_refl (a: nat): $ eq a a $;`);
+
+    expect(diagnostics).toEqual([]);
+    expect(spec.relations.get("wff")).toEqual({
+      refl: "biid",
+      sort: "wff",
+      symm: "bisym",
+      term: "bi",
+      trans: "bitr",
+      transport: "mpbi",
+    });
+    expect(spec.relations.get("nat")?.transport).toBeNull();
+    expect(
+      spec.rules.get("biid")?.foreignAnnotations.map((a) => a.text),
+    ).toEqual(["@relation wff bi biid bitr bisym mpbi"]);
+
+    const twice = parseSpec(`${WFF}term bi (a b: wff): wff;
+--| @relation wff bi r t s m
+axiom r (a: wff): $ bi a a $;
+--| @relation wff bi r2 t s m
+axiom r2 (a: wff): $ bi a a $;`);
+    // The engine refuses the file, so it is an error, not a choice.
+    expect(twice.diagnostics).toMatchObject([
+      { id: "relation_duplicate", severity: "error" },
+    ]);
+  });
+
   test("a @vars token cannot also be a declared term", () => {
     const conflict = parseSpec(`--| @vars a b\nsort wff;\nterm a: wff;`);
     expect(ids(conflict)).toEqual(["vars_term_conflict"]);

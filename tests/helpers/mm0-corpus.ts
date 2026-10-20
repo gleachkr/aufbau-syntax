@@ -1,14 +1,13 @@
 import { readdirSync, readFileSync } from "node:fs";
 import { join } from "node:path";
 import type {
-  Binder,
   MathString,
   ParseResult,
   Spec,
   SurfaceLanguage,
   Term,
 } from "../../src/index";
-import { printTerm } from "../../src/index";
+import { printTerm, statementScope } from "../../src/index";
 
 /**
  * The MM0 corpus under `tests/fixtures/mm0/`: reference files from the
@@ -39,18 +38,6 @@ export interface CorpusFormula {
   readonly sorts: readonly string[];
 }
 
-function scopeOf(binders: readonly Binder[]): Map<string, string> {
-  const scope = new Map<string, string>();
-
-  for (const binder of binders) {
-    if ("sort" in binder.type && binder.name !== "_") {
-      scope.set(binder.name, binder.type.sort);
-    }
-  }
-
-  return scope;
-}
-
 /**
  * Every math string in the file's assertions and definitions. mm0.md:
  * "All formulas appearing in axioms and theorems (between `$`) must have
@@ -68,7 +55,7 @@ export function corpusFormulas(spec: Spec): readonly CorpusFormula[] {
 
   for (const statement of spec.statements) {
     if (statement.kind === "axiom" || statement.kind === "theorem") {
-      const scope = scopeOf(statement.binders);
+      const scope = statementScope(statement);
       const base = { statement: statement.name, scope, sorts: assertable };
 
       for (const binder of statement.binders) {
@@ -98,7 +85,7 @@ export function corpusFormulas(spec: Spec): readonly CorpusFormula[] {
         statement: statement.name,
         role: "definiens",
         math: statement.definiens,
-        scope: scopeOf(statement.binders),
+        scope: statementScope(statement),
         sorts: returnSort === undefined ? [] : [returnSort],
       });
     }

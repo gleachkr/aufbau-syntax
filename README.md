@@ -28,10 +28,12 @@ One spec file per textbook system; no code per system.
 1. **Statement reader** — parses the MM0 statement grammar (sorts, terms,
    definitions, axioms and theorems, notations, coercions, delimiters,
    input/output) and `--|` annotations into a `Spec`.
-   `@syntax` annotations are understood structurally; all others (`@acui`,
-   `@congr`, …) pass through as data — except `@vars`, which is read *and*
-   passed through: the engine's variable pools are the surface lexicon's
-   variables.
+   `@syntax` annotations are understood structurally; all others
+   (`@congr`, `@rewrite`, …) pass through as data — except `@vars`,
+   `@fallback`, `@acui` and `@relation`, which are read *and* passed
+   through: the engine's variable pools are the surface lexicon's
+   variables, and the rest are what a consumer needs to compare terms and
+   cite rules as the engine does.
 2. **Scanner** — segment, then classify. Chunk boundaries come from the
    declared delimiter set alone (MM0's own tokenizer rule, generalized so
    that a delimiter may be any string — `∧`, `<->` — where the engine's
@@ -110,6 +112,21 @@ Notation is not shadowed. Calgary spells ∀ `A`, and a theorem binding
 wants is settled by backtracking. Scope also settles what
 `closed-sentences` counts as free: a line of a proof of `theorem unimp
 {x: var} …` may mention `x`, because the theorem binds it.
+
+`statementScope(statement)` is that scope for a statement of the file
+itself, and `parseStatement(language, statement)` reads all of an axiom's
+or theorem's formulas in it, the way the engine does. `binderShadows`
+says which binders of a scope push a meaning of the language aside — a
+lint for whoever wrote the statement.
+
+### Spellings and lists
+
+`spellingsOf(language, term)` lists the tokens a constructor is written
+with, canonical first; `spellingMeanings(language, spelling)` goes the
+other way, through notations, elab rules and `@vars` pools.
+`splitTopLevel(language, text, ",")` splits a list of the language's
+formulas outside the grouping pairs it declares, so `R(a, b), F(c)` is two
+pieces.
 
 See `docs/syntax-annotations.md` for the annotation reference and
 `docs/authoring-a-spec.md` for how to write a new system.

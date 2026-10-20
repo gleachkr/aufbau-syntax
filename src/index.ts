@@ -35,9 +35,11 @@ export type {
   SyntaxAnnotation,
 } from "./reader/annotations.js";
 export type {
+  Acui,
   CoercionInfo,
   Definition,
   NotationInfo,
+  Relation,
   RuleInfo,
   SortInfo,
   Spec,
@@ -66,6 +68,20 @@ export type {
 export { parseStatements } from "./reader/statements.js";
 export type { Reading, ScanPoint, Scope } from "./scan.js";
 export { Scanner } from "./scan.js";
+export type { SpellingMeanings } from "./spelling.js";
+export { notationToken, spellingMeanings, spellingsOf } from "./spelling.js";
+export { splitTopLevel } from "./split.js";
+export type {
+  BinderShadow,
+  BinderShadowKind,
+  StatementFormula,
+  StatementReading,
+} from "./statement.js";
+export {
+  binderShadows,
+  parseStatement,
+  statementScope,
+} from "./statement.js";
 export type { AppTerm, Fixity, Term, VariableTerm } from "./term.js";
 export { walkTerm } from "./term.js";
 export { unfoldDefinitions } from "./unfold.js";

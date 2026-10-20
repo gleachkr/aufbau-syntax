@@ -2,6 +2,31 @@
 
 ## Unreleased
 
+**The engine's `@acui` and `@relation` are data.** `TermInfo.acui`
+carries a term's ACUI laws and unit, and `Spec.relations` each sort's
+relation bundle, read from the engine's own annotations, which stay
+foreign. The reader checks what the engine checks on reading the line: a
+binary combiner over its own sort (`acui_combiner`), a unit constant of
+that sort declared earlier (`acui_unit`), and no second relation for a
+sort (`relation_duplicate`, an error, as the engine refuses the file).
+
+**A statement's formulas read in its own scope.**
+`statementScope(statement)` is an axiom's, theorem's or def's binders,
+name to sort, and `parseStatement(language, statement, { sort? })` reads
+every hypothesis (binders first, then the `>`-chain, the engine's citation
+order) and the conclusion in engine mode in that scope, each at the first
+provable sort that takes it unless a sort is named.
+`binderShadows(language, scope)` is the lint for a binder that pushes a
+notation, a term or a variable of another sort aside.
+
+**Spellings both ways, and lists.** `spellingsOf(language, term)` is the
+tokens a term is written with, canonical first; `spellingMeanings(language,
+spelling)` is the terms and `@vars` sorts a spelling can stand for, through
+notations and elab rules; `notationToken` is the token a notation is known
+by. `splitTopLevel(language, text, separator)` splits text at a separator
+outside the grouping pairs the language declares, `@syntax brackets`
+included.
+
 ## 0.0.6 — 2026-10-18
 
 **Elab rules a text cannot use cost nothing.** A rule with a literal the

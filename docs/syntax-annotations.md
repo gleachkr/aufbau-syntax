@@ -4,8 +4,8 @@
 Aufbau uses for `@acui`, `@congr`, `@rewrite`, `@vars` and the rest. One annotation per
 line, attached to the statement that follows it. Anything that is not
 `@syntax` is *foreign*: preserved as data, never interpreted here — with
-two deliberate exceptions, `@vars` and `@fallback`, which are read *and*
-preserved (see below). Before a spec is handed to the Aufbau engine (which rejects
+four deliberate exceptions, `@vars`, `@fallback`, `@acui` and
+`@relation`, which are read *and* preserved (see below). Before a spec is handed to the Aufbau engine (which rejects
 annotations it does not know), strip the `@syntax` lines with
 `stripSyntaxAnnotations`; everything else in the file is already the
 engine's language.
@@ -544,3 +544,29 @@ checks what the engine requires — one `@fallback` per rule
 (`fallback_duplicate`, the first stands), naming an earlier axiom or
 theorem (`fallback_unknown`) — so following `fallback` from any rule
 always ends.
+
+### The engine's `@acui` and `@relation`
+
+A consumer that compares terms the way the engine does needs to know what
+the engine compares them modulo, so the reader listens in on these two as
+well, the lines staying foreign:
+
+```text
+term emp: ctx;
+--| @acui ctx_assoc ctx_comm emp ctx_idem
+term join (g h: ctx): ctx;
+
+--| @relation wff bi biid bitr bisym mpbi
+axiom biid (a: wff): $ a <-> a $;
+```
+
+`TermInfo.acui` holds a term's laws (`assoc`, `comm`, `unit`, `idem`, the
+optional two `null` where the line writes `_`), and `Spec.relations` each
+sort's relation bundle (`term`, `refl`, `trans`, `symm`, and `transport`,
+`null` for `_`). The reader checks what the engine checks on reading the
+line: an `@acui` term takes two regular arguments of its own sort
+(`acui_combiner`) and its unit is a constant of that sort declared before
+it (`acui_unit`); a second `@relation` for one sort is an error
+(`relation_duplicate`), since the engine refuses the file. A line short of its words is ignored, as the engine ignores
+it, and the laws' shapes are left to the engine, which checks them once
+they are declared — perhaps later, perhaps in a proof file.
