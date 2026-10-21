@@ -1,6 +1,7 @@
 import { describe, expect, test } from "bun:test";
 import type { AssertStatement, Term } from "../src/index";
 import {
+  engineForm,
   normalTerm,
   parseSpec,
   RewriteLimitError,
@@ -515,6 +516,26 @@ axiom add_s (a b: nat): $ neq (add (s a) b) (s (add a b)) $;
     // alone stays under the thousand.
     expect(same(lang, ...pair(401), "nat")).toBe(true);
     expect(() => same(lang, ...pair(501), "nat")).toThrow(RewriteLimitError);
+  });
+});
+
+describe("engineForm", () => {
+  test("the normal form where the engine can prove its way there", () => {
+    const lang = language(REWRITES);
+
+    expect(shape(engineForm(lang, read(lang, "f a")))).toBe("b");
+    expect(termKey(lang, engineForm(lang, read(lang, "f a")))).toBe(
+      termKey(lang, read(lang, "f a")),
+    );
+  });
+
+  test("the term as written where it cannot", () => {
+    const lang = language(REWRITES);
+    // `h` has no congruence: `normalTerm` reaches `h b`, the engine does not.
+    const term = read(lang, "h (f a)");
+
+    expect(shape(normalTerm(lang, term))).toBe("(h b)");
+    expect(engineForm(lang, term)).toBe(term);
   });
 });
 

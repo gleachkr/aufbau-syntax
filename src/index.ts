@@ -4,6 +4,8 @@
  * The public API grows stage by stage; see the README for the layer stack.
  */
 
+export type { AbstractSites } from "./abstract.js";
+export { abstractContext } from "./abstract.js";
 export type { DelimiterRules, DelimiterSet } from "./delimiters.js";
 export {
   adjoin,
@@ -16,6 +18,7 @@ export type { Diagnostic, Severity, Span } from "./diagnostics.js";
 export { boundVariableBinders, stripSyntaxAnnotations } from "./engine.js";
 export type { NormalOptions, VariableInfo, Variables } from "./normal.js";
 export {
+  engineForm,
   normalTerm,
   RewriteLimitError,
   sameTerm,

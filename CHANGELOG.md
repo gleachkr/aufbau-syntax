@@ -31,6 +31,20 @@ engine gives up there too; `termKey` then keys the term as written.
 compiler on random terms of Carnap's theories (copied under
 `tests/fixtures/carnap/`) and the corpus.
 
+**The form the engine compares, and `@abstract`.** `engineForm(lang, term,
+{ variables? })` is a term's normal form where the engine can prove its
+way there and the term as written otherwise: the term `termKey` keys,
+where `normalTerm` goes as far as the rules go. `abstractContext(lang,
+{ left, right?, leftPlug, rightPlug, hole }, { variables? })` is the engine's `@abstract`
+walk with bare-name plugs (`applyAbstractBinding` in
+`derived_bindings.zig`): the sort where the hole and plugs meet, as
+`meetSort` picks it, each site the plug under its coercions there, a
+parallel walk that must agree elsewhere, and one retry with defs opened
+and normalized. Without `right`, every site of the left plug is the hole.
+`tests/abstract-engine.test.ts` checks it against the compiler through a
+probe rule whose conclusion shows the context, on Leibniz's one sort and on
+names and a variable meeting at terms.
+
 **Engine text reads MM0's application, not the surface's.** In engine
 mode `@syntax elided` and `@syntax juxtaposed` no longer apply, since the
 engine never sees them: `U sq` is `U` applied to `sq`, as a theory's own

@@ -94,30 +94,33 @@ function bindersOf({ a, b, variables = new Map() }: ProbePair): string {
     .join(" ");
 }
 
-/** For each pair, whether the engine takes its terms for the same. */
-export async function engineSame(
-  lang: SurfaceLanguage,
+/** A probe theorem, given the name it is compiled under. */
+export interface ProbeTheorem {
+  readonly statement: string;
+  readonly proof: string;
+}
+
+/**
+ * Compile `theorems` against `source`, its theorems standing as axioms,
+ * with `extension` declared after it: for each, the error the engine
+ * refuses it with, or null where it checks. They are compiled a few at a
+ * time, named `zz_t0`, `zz_t1`, … in each batch, since the compiler stops
+ * reporting refusals past a cap. A refusal that names no theorem is the
+ * probe's own mistake, and throws.
+ */
+export async function probeErrors(
   source: string,
-  pairs: readonly ProbePair[],
-): Promise<boolean[]> {
+  extension: string,
+  theorems: readonly ((name: string) => ProbeTheorem)[],
+): Promise<(string | null)[]> {
   const loaded = await engine();
-  const extension = probe(lang).text;
-  const verdicts: boolean[] = [];
+  const found: (string | null)[] = [];
   const BATCH = 25;
 
-  for (let at = 0; at < pairs.length; at += BATCH) {
-    const batch = pairs.slice(at, at + BATCH);
-    const theorems = batch.map((pair, index) => {
-      const { a, b, sort } = pair;
-      const name = `zz_t${index}`;
-      const binders = bindersOf(pair);
-      const goal = `$ zz_in_${sort} (${printTerm(lang, b, "engine")}) $`;
-
-      return {
-        proof: `${name}\n----\nl1: ${goal} by zz_i_${sort} (a := $ ${printTerm(lang, a, "engine")} $)`,
-        statement: `theorem ${name}${binders === "" ? "" : ` ${binders}`}: ${goal};`,
-      };
-    });
+  for (let at = 0; at < theorems.length; at += BATCH) {
+    const batch = theorems
+      .slice(at, at + BATCH)
+      .map((theorem, index) => theorem(`zz_t${index}`));
     const result = loaded.compile(
       [
         stripSyntaxAnnotations(source).replace(
@@ -125,14 +128,14 @@ export async function engineSame(
           "$1axiom",
         ),
         extension,
-        ...theorems.map((theorem) => theorem.statement),
+        ...batch.map((theorem) => theorem.statement),
       ].join("\n"),
-      theorems.map((theorem) => theorem.proof).join("\n\n"),
+      batch.map((theorem) => theorem.proof).join("\n\n"),
     );
     const errors = (
       (result.diagnostics ?? []) as readonly {
-        readonly severity?: string;
         readonly error?: string;
+        readonly severity?: string;
         readonly theorem?: string | null;
       }[]
     ).filter((diagnostic) => diagnostic.severity === "error");
@@ -142,14 +145,39 @@ export async function engineSame(
       throw new Error(`the probe theory failed: ${JSON.stringify(stray)}`);
     }
 
-    const refused = new Set(errors.map((diagnostic) => diagnostic.theorem));
-
     batch.forEach((_, index) => {
-      verdicts.push(!refused.has(`zz_t${index}`));
+      found.push(
+        errors.find((diagnostic) => diagnostic.theorem === `zz_t${index}`)
+          ?.error ?? null,
+      );
     });
   }
 
-  return verdicts;
+  return found;
+}
+
+/** For each pair, whether the engine takes its terms for the same. */
+export async function engineSame(
+  lang: SurfaceLanguage,
+  source: string,
+  pairs: readonly ProbePair[],
+): Promise<boolean[]> {
+  const errors = await probeErrors(
+    source,
+    probe(lang).text,
+    pairs.map((pair) => (name) => {
+      const { a, b, sort } = pair;
+      const binders = bindersOf(pair);
+      const goal = `$ zz_in_${sort} (${printTerm(lang, b, "engine")}) $`;
+
+      return {
+        proof: `${name}\n----\nl1: ${goal} by zz_i_${sort} (a := $ ${printTerm(lang, a, "engine")} $)`,
+        statement: `theorem ${name}${binders === "" ? "" : ` ${binders}`}: ${goal};`,
+      };
+    }),
+  );
+
+  return errors.map((error) => error === null);
 }
 
 const SPAN = { end: 0, start: 0 } as const;

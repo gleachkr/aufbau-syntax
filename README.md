@@ -148,6 +148,26 @@ check needs to know: `{x / t} φ ⟺ φ` applies only where `φ` does not
 mention `x`. `tests/normal-engine.test.ts` checks them against the
 compiler, and says where the two still part ways.
 
+`normalTerm` goes as far as the rules go, which can be further than the
+engine can prove its way (a rewrite under a term with no `@congr`); the
+engine then compares the term as written. `engineForm(language, term)` is
+the term as the engine compares it, the one `termKey` keys.
+
+### `@abstract`
+
+`abstractContext(language, { left, right?, leftPlug, rightPlug, hole }, { variables? })`
+is the context the engine's `@abstract` (with bare-name plugs) recovers:
+`left` with each site made the hole, where a site is the left plug in
+`left` against the right plug in `right`, both under their coercions to
+the sort where the hole and plugs meet (`n2t a` against `n2t b`, the hole
+going in as `v2t x`). The two are walked in parallel and must otherwise
+agree; failing that, they are tried once more with their defs opened and
+normalized, as the engine retries. Without `right`, every site of the left
+plug is one. Null where there is no site, the structures differ, or the
+sorts do not meet. The `variables` are the statement's, as above: the
+retry's rewrites check dependencies with them. `tests/abstract-engine.test.ts` checks it against the
+compiler through a probe rule that shows the context it recovered.
+
 See `docs/syntax-annotations.md` for the annotation reference and
 `docs/authoring-a-spec.md` for how to write a new system.
 
