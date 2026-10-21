@@ -145,8 +145,13 @@ describe("the Aufbau compiler accepts engine-mode output", () => {
         throw new Error("missing parsed term");
       }
 
+      // The scope's names are the theorem's own regular binders; the
+      // engine refuses a name declared twice.
       const binders = [
-        boundVariableBinders([term]),
+        boundVariableBinders(
+          [term],
+          new Set(Object.keys(testCase.scope ?? {})),
+        ),
         scopeBinders(testCase.scope),
       ]
         .filter((part) => part !== "")

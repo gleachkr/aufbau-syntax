@@ -14,6 +14,15 @@ export {
 } from "./delimiters.js";
 export type { Diagnostic, Severity, Span } from "./diagnostics.js";
 export { boundVariableBinders, stripSyntaxAnnotations } from "./engine.js";
+export type { NormalOptions, VariableInfo, Variables } from "./normal.js";
+export {
+  normalTerm,
+  RewriteLimitError,
+  sameTerm,
+  statementVariables,
+  termKey,
+  Unstatable,
+} from "./normal.js";
 export type {
   ParseFailure,
   ParseMode,

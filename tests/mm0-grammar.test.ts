@@ -146,7 +146,7 @@ describe("constructor application (expression(1024) → FUNC expression(max){n})
   });
 });
 
-describe("a declared surface shape sits in front of MM0's rule", () => {
+describe("a declared surface shape sits in front of MM0's rule in surface text", () => {
   test("an elided unit wins over bare application for that sort", () => {
     const lang = language(`delimiter $ ( ) , $;
 provable sort wff;
@@ -164,12 +164,26 @@ term and (p q: wff): wff;
 infixl and: $∧$ prec 30;
 `);
 
+    const surface = (text: string) => lang.parse(text, { lints: false });
+
     // `P` alone is the sentence letter — the elision, declared for `seq`.
-    expect(shape(read(lang, "P ∧ P"))).toBe("(and (P snil) (P snil))");
+    const both = surface("P ∧ P");
+    expect(both.ok && shape(both.term)).toBe("(and (P snil) (P snil))");
     // …so `P a` is not read as application: the bare letter stops, and
     // what follows it is unexpected. Bracketed application still reads.
-    expect(refuse(lang, "P a")).toBe("Unexpected “a”.");
-    expect(shape(read(lang, "P (a)"))).toBe("(P (n2s a))");
+    const bare = surface("P a");
+    expect(bare.ok ? "" : bare.diagnostics[0]?.message).toBe(
+      "Unexpected “a”.",
+    );
+    const bracketed = surface("P (a)");
+    expect(bracketed.ok && shape(bracketed.term)).toBe("(P (n2s a))");
+
+    // Engine text reads MM0's rule: the engine never sees the annotation,
+    // and a theory's own statements (`P_congr`'s `P s`) are engine text.
+    expect(shape(read(lang, "P a ∧ P snil"))).toBe(
+      "(and (P (n2s a)) (P snil))",
+    );
+    expect(refuse(lang, "P ∧ P")).toBe("Expected a formula but found “∧”.");
   });
 });
 

@@ -20,8 +20,12 @@ function sortOf(binder: Binder): string | null {
   return "sort" in binder.type ? binder.type.sort : null;
 }
 
-/** A def's definiens, read as engine text over its binders and dummies. */
-function body(lang: SurfaceLanguage, name: string): Term | null {
+/**
+ * A def's definiens, read as engine text over its binders and dummies;
+ * null for a term, or a def whose definiens does not read or the proof
+ * file supplies.
+ */
+export function definiens(lang: SurfaceLanguage, name: string): Term | null {
   let cache = bodies.get(lang);
 
   if (cache === undefined) {
@@ -114,9 +118,9 @@ export function unfoldDefinitions(lang: SurfaceLanguage, term: Term): Term {
   const args = term.args.map((arg) => unfoldDefinitions(lang, arg));
   const unchanged = args.every((arg, at) => arg === term.args[at]);
   const info = lang.spec.terms.get(term.term);
-  const definiens = info?.isDef === true ? body(lang, term.term) : null;
+  const body = info?.isDef === true ? definiens(lang, term.term) : null;
 
-  if (info === undefined || definiens === null) {
+  if (info === undefined || body === null) {
     return unchanged ? term : { ...term, args };
   }
 
@@ -136,7 +140,7 @@ export function unfoldDefinitions(lang: SurfaceLanguage, term: Term): Term {
     namesIn(arg, used);
   }
 
-  const taken = namesIn(definiens, new Set(used));
+  const taken = namesIn(body, new Set(used));
 
   for (const dummy of info.definition?.dummies ?? []) {
     const sort = sortOf(dummy);
@@ -157,10 +161,10 @@ export function unfoldDefinitions(lang: SurfaceLanguage, term: Term): Term {
         kind: "variable",
         name: fresh,
         sort,
-        span: definiens.span,
+        span: body.span,
       });
     }
   }
 
-  return unfoldDefinitions(lang, substitute(definiens, values));
+  return unfoldDefinitions(lang, substitute(body, values));
 }

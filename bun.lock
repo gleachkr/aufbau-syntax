@@ -5,7 +5,7 @@
     "": {
       "name": "@aufbau/syntax",
       "devDependencies": {
-        "@aufbau/compiler": "0.0.6",
+        "@aufbau/compiler": "0.0.18-canary.20261020T233803Z.92.geb0b7920d37f",
         "@biomejs/biome": "^2.5.10",
         "@types/bun": "^1.3.14",
         "typescript": "^6.0.3",
@@ -13,7 +13,7 @@
     },
   },
   "packages": {
-    "@aufbau/compiler": ["@aufbau/compiler@0.0.6", "", {}, "sha512-F/Rutmukm0xVK7cJCGIozg5/POx7HLryRHkPiliZP1wbNWyxPxmmOvwKl3nyydJtMxy+IdWa6UR0j+VG3e5DPQ=="],
+    "@aufbau/compiler": ["@aufbau/compiler@0.0.18-canary.20261020T233803Z.92.geb0b7920d37f", "", {}, "sha512-LXSlUHq/S7ZgDc29eJI3RulFY9QiLeHsvUceKczZu4XujjEqjWrRmd/rbdZ5Oy63A4vCDklcbTzSCi/qTjZz/w=="],
 
     "@biomejs/biome": ["@biomejs/biome@2.5.10", "", { "optionalDependencies": { "@biomejs/cli-darwin-arm64": "2.5.10", "@biomejs/cli-darwin-x64": "2.5.10", "@biomejs/cli-linux-arm64": "2.5.10", "@biomejs/cli-linux-arm64-musl": "2.5.10", "@biomejs/cli-linux-x64": "2.5.10", "@biomejs/cli-linux-x64-musl": "2.5.10", "@biomejs/cli-win32-arm64": "2.5.10", "@biomejs/cli-win32-x64": "2.5.10" }, "bin": { "biome": "bin/biome" } }, "sha512-WRKXARA3kTuiV5sxqTpobJ/I0MVd4vk3pOL6wnp5az4LntFIhWTj1RWZq3DI9PCEN3lXcqy7p5aqUHzvq8AXyQ=="],
 

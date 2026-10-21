@@ -2,6 +2,45 @@
 
 ## Unreleased
 
+**Normal forms and identity, as the engine has them.** `normalTerm(lang,
+term, { variables? })` is a term's normal form under the theory's
+`@rewrite` rules and `@acui` laws, with defs left folded: children first,
+bags flattened, a member folded into a def member of its bag that covers
+it, sorted where they commute, merged where they are idempotent and rid
+of the unit where a rule of unit-law shape allows, then rewrites in
+declaration order with their binders' sorts, boundness and
+dependencies checked. `sameTerm(lang, derived, stated, { variables? })`
+says whether the engine accepts a line stating `stated` where its rule
+derives `derived`, by the engine's own ladder (`convertTo`): through defs,
+a def with dot-dummies opened against the variables the other side
+writes; then the defs `stated` keeps folded, folded in; then the two
+normal forms and a common target between them; then one normal form
+through defs to the other side. Only steps the engine can state count,
+and a congruence step that breaks its rule's dependencies refuses the
+line, as the engine's check of the finished proof does. `termKey` is a
+key that implies it: the normal form where the engine can prove its way
+there, the term as written otherwise, and a variable never keyed like a
+constant of its name. `statementVariables(statement)` gives the
+dependency check a statement's binders, and a rewrite cycle or a
+thousandth step throws `RewriteLimitError`, as the engine refuses it; the
+thousand steps are counted per rung, across both sides of the line.
+`normalTerm` also throws `Unstatable` (exported) where folding a member
+into a def leaves one of the def's dot-dummies without a witness, as the
+engine gives up there too; `termKey` then keys the term as written.
+`tests/normal-engine.test.ts` checks `sameTerm` against the Aufbau
+compiler on random terms of Carnap's theories (copied under
+`tests/fixtures/carnap/`) and the corpus.
+
+**Engine text reads MM0's application, not the surface's.** In engine
+mode `@syntax elided` and `@syntax juxtaposed` no longer apply, since the
+engine never sees them: `U sq` is `U` applied to `sq`, as a theory's own
+`U_congr` writes it, and bare `U` is incomplete. Surface text is
+unchanged, and so is engine output, which writes the elided term out.
+
+**`boundVariableBinders(terms, declared?)`** leaves out the names a
+statement already binds; the engine (0.0.18) refuses a name bound twice.
+The compiler the tests use is now the `eb0b7920` canary of 0.0.18.
+
 **The engine's `@acui` and `@relation` are data.** `TermInfo.acui`
 carries a term's ACUI laws and unit, and `Spec.relations` each sort's
 relation bundle, read from the engine's own annotations, which stay

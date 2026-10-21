@@ -128,6 +128,26 @@ other way, through notations, elab rules and `@vars` pools.
 formulas outside the grouping pairs it declares, so `R(a, b), F(c)` is two
 pieces.
 
+### Terms the engine takes for the same
+
+`normalTerm(language, term)` is a term's normal form under the theory's
+`@rewrite` rules and `@acui` laws, as the engine computes it (up to the
+order it sorts a bag's variables in), with defs left folded (a bag's
+member that a def member covers is folded into it, as the engine does).
+`sameTerm(language, derived, stated)` says whether the engine accepts a
+line stating `stated` where its rule derives `derived`: the engine's own
+decision, through defs (their dot-dummies included), normal forms and the
+common targets it searches for between them, step for step. It is a
+relation the engine need not keep symmetric. `termKey` is a key that
+implies it, for grouping: two terms with one key are the same to the
+engine (unless the two normalizations together pass its thousand-step
+limit), but two the engine takes for the same can have different keys.
+All three take the statement's `variables`
+(`statementVariables(statement)`), which say what a rewrite's dependency
+check needs to know: `{x / t} φ ⟺ φ` applies only where `φ` does not
+mention `x`. `tests/normal-engine.test.ts` checks them against the
+compiler, and says where the two still part ways.
+
 See `docs/syntax-annotations.md` for the annotation reference and
 `docs/authoring-a-spec.md` for how to write a new system.
 

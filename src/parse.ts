@@ -1336,8 +1336,12 @@ class Parse {
         continue;
       }
 
+      // Juxtaposition and elision are surface conventions, `@syntax`
+      // annotations the engine never sees: engine text writes every
+      // argument, so `U sq` there is `U` applied to `sq`, as MM0 reads it.
+      const surface = this.mode !== "engine";
       const combiner =
-        argBinders.length === 1
+        surface && argBinders.length === 1
           ? this.lang.juxtaposedOf.get(target)
           : undefined;
       const point = this.at(this.position);
@@ -1435,7 +1439,7 @@ class Parse {
         // can still be a sentence letter in a juxtaposed dialect.
       }
 
-      const elided = this.lang.elidedOf.get(target);
+      const elided = surface ? this.lang.elidedOf.get(target) : undefined;
 
       if (elided !== undefined) {
         args.push({

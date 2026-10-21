@@ -196,6 +196,10 @@ parses as `P(snil)`, the 0-ary use of the predicate letter. Printing,
 display drops it again (bare `P`), and engine mode writes it out in full
 (`P (snil)`). One nullary term per sort (validated).
 
+Engine text has no elision, since the engine never sees the annotation:
+read in engine mode, as a theory's own statements are, `P s` is `P`
+applied to `s`, and bare `P` is incomplete.
+
 ## `juxtaposed [compound]`
 
 ```text
@@ -203,11 +207,11 @@ display drops it again (bare `P`), and engine mode writes it out in full
 term scomma (s t: seq): seq;
 ```
 
-Adjacency of this combiner's sort denotes it, anywhere. The annotated
-term must be binary and homogeneous (`S × S → S`), must carry an *infix*
-notation — adjacency inherits its precedence and associativity, and the
-engine cannot read invisibility either way (engine mode prints `x , y`)
-— and is unique per sort (all validated).
+Adjacency of this combiner's sort denotes it anywhere in surface text.
+The annotated term must be binary and homogeneous (`S × S → S`), must
+carry an *infix* notation — adjacency inherits its precedence and
+associativity, and the engine cannot read invisibility either way (engine
+mode prints `x , y`) — and is unique per sort (all validated).
 
 The reading has two faces. In **argument position**, a declared name's
 arguments glue — `Rxy` is `R` applied to the sequence `x·y`, the
@@ -236,6 +240,11 @@ is opt-in rather than inferred because under a variadic sequence with an
 elided unit (Magnus's `seq`) the group is already spoken for: `P(Q)` is
 parenthesized application, and a second reading of the same text is
 exactly the ambiguity this parser exists to refuse.
+
+Engine text has neither face, since the engine never sees the
+annotation: read in engine mode, as a theory's own statements are,
+arguments are written out (`R (x , y)`), and `R x y` is `R` applied to
+`x` with `y` left over.
 
 Glue is not this annotation's to grant, though: `Rxy` is three operands
 only if the delimiters already cut it into three chunks. A spec that

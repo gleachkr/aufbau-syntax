@@ -24,14 +24,18 @@ export function stripSyntaxAnnotations(source: string): string {
 /**
  * The variable binder list for a theorem statement over these terms,
  * e.g. `{x y: var} {a: name}` — one group per sort, empty string when
- * there are no variables.
+ * there are no variables. Names in `declared` are left out: the statement
+ * binds them itself, and the engine refuses a name bound twice.
  */
-export function boundVariableBinders(terms: readonly Term[]): string {
+export function boundVariableBinders(
+  terms: readonly Term[],
+  declared: ReadonlySet<string> = new Set(),
+): string {
   const bySort = new Map<string, Set<string>>();
 
   for (const term of terms) {
     walkTerm(term, (node) => {
-      if (node.kind === "variable") {
+      if (node.kind === "variable" && !declared.has(node.name)) {
         const names = bySort.get(node.sort) ?? new Set();
         names.add(node.name);
         bySort.set(node.sort, names);
