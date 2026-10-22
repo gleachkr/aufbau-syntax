@@ -445,10 +445,7 @@ export function elaborate(
   text: string,
   scope: Scope = NO_SCOPE,
 ): Elaborated {
-  let current: Elaborated = {
-    text,
-    origin: [...text].map((_, index) => index),
-  };
+  let current: Elaborated = { text, origin: identity(text) };
 
   for (const rule of lang.spec.elabRules) {
     current = applyRule(
@@ -476,7 +473,19 @@ export function elaborate(
  * which to add it.
  */
 export function delaborate(lang: SurfaceLanguage, text: string): string {
-  let current = text;
+  return delaborateTracked(lang, text).text;
+}
+
+/**
+ * {@link delaborate}, with the offset map back to the text it was given:
+ * what lets `printPieces` say which node each delaborated character came
+ * from.
+ */
+export function delaborateTracked(
+  lang: SurfaceLanguage,
+  text: string,
+): Elaborated {
+  let current: Elaborated = { text, origin: identity(text) };
 
   for (const rule of [...lang.spec.elabRules].reverse()) {
     if (rule.inputOnly) {
@@ -491,16 +500,25 @@ export function delaborate(lang: SurfaceLanguage, text: string): string {
 
     current = applyRule(
       lang,
-      current,
-      [...current].map((_, index) => index),
+      current.text,
+      current.origin,
       pattern,
       invertPattern(rule),
       "",
       NO_SCOPE,
-    ).text;
+    );
   }
 
   return current;
+}
+
+/**
+ * Each offset of `text` mapped to itself. Offsets are UTF-16 code units,
+ * as the scanner's are: a map over code points would come up short of a
+ * text with `𝕋` in it and send its last offsets to the wrong place.
+ */
+function identity(text: string): number[] {
+  return Array.from({ length: text.length }, (_, index) => index);
 }
 
 /** An elaborated-text span mapped back to source offsets. */

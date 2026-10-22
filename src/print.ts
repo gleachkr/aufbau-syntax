@@ -39,7 +39,7 @@
  */
 
 import { adjoin, type DelimiterRules } from "./delimiters.js";
-import { delaborate } from "./elab.js";
+import { delaborate, delaborateTracked, type Elaborated } from "./elab.js";
 import { generalParts, precNum, type SurfaceLanguage } from "./parse.js";
 import type { Term } from "./term.js";
 
@@ -89,7 +89,7 @@ export function printTerm(
     return engine(printer, term);
   }
 
-  const printed = display(printer, term, lang.spec.display.dropOuterParens);
+  const printed = displayed(lang, term);
 
   return lang.spec.elabRules.length > 0
     ? delaborate(lang, printed.text)
@@ -102,7 +102,7 @@ interface Printer {
   readonly rules: DelimiterRules;
 }
 
-/** Pieces set as tight as the reader's delimiters allow. */
+/** Engine pieces set as tight as the reader's delimiters allow. */
 function tight(printer: Printer, ...pieces: readonly string[]): string {
   return pieces.reduce((left, right) => adjoin(left, right, printer.rules));
 }
@@ -114,16 +114,16 @@ function spaced(...pieces: readonly string[]): string {
 
 /** One piece of a display notation: an operand's text, or its own token. */
 interface Piece {
-  readonly text: string;
+  readonly laid: Laid;
   readonly token: boolean;
 }
 
-function operand(text: string): Piece {
-  return { text, token: false };
+function operand(laid: Laid): Piece {
+  return { laid, token: false };
 }
 
-function token(text: string): Piece {
-  return { text, token: true };
+function token(text: string, path: readonly number[]): Piece {
+  return { laid: laid(text, path, "token"), token: true };
 }
 
 /**
@@ -133,29 +133,33 @@ function token(text: string): Piece {
  * right-only token breaks before itself, so it hugs what precedes it and
  * stands off what follows (`a, b`); a left-only one is the mirror. That is
  * the declaration read as layout, and it holds in a spec whose letters are
- * delimiters too, where `a,b` would read back just as well.
+ * delimiters too, where `a,b` would read back just as well. `path` is the
+ * notation's node, whose the spaces are.
  */
 function setPieces(
   printer: Printer,
   pieces: readonly Piece[],
   apart: boolean,
-): string {
-  let text = "";
+  path: readonly number[],
+): Laid {
+  let text = NOTHING;
   let previous: Piece | null = null;
 
   for (const piece of pieces) {
-    if (piece.text.length === 0) {
+    if (piece.laid.text.length === 0) {
       continue;
     }
 
     if (previous === null) {
-      text = piece.text;
+      text = piece.laid;
       previous = piece;
       continue;
     }
 
-    const after = previous.token ? oneSide(printer, previous.text) : null;
-    const before = piece.token ? oneSide(printer, piece.text) : null;
+    const after = previous.token
+      ? oneSide(printer, previous.laid.text)
+      : null;
+    const before = piece.token ? oneSide(printer, piece.laid.text) : null;
     const space =
       after === "right" || before === "left"
         ? true
@@ -165,8 +169,8 @@ function setPieces(
 
     // A space never joins two chunks, so only the tight seam needs adjoin.
     text = space
-      ? `${text} ${piece.text}`
-      : adjoin(text, piece.text, printer.rules);
+      ? joined(text, laid(" ", path, "space"), piece.laid)
+      : adjoined(printer, path, text, piece.laid);
     previous = piece;
   }
 
@@ -181,7 +185,7 @@ function oneSide(printer: Printer, text: string): "left" | "right" | null {
   return left === right ? null : left ? "left" : "right";
 }
 
-/** A piece in the built-in grouping pair. */
+/** An engine piece in the built-in grouping pair. */
 function grouped(printer: Printer, inner: string): string {
   return tight(printer, "(", inner, ")");
 }
@@ -281,6 +285,175 @@ function engineOperand(printer: Printer, term: Term | undefined): string {
 
 // ── display ──────────────────────────────────────────────────────────
 
+/**
+ * What a piece of display text is: a notation's own token (`∧`, `¬`,
+ * `∀`, `⊤`), a grouping bracket, a name — a variable, a constant, the head
+ * of an application — or a space between two pieces.
+ */
+export type PieceKind = "token" | "bracket" | "name" | "space";
+
+/** One piece of display text, and the node of the term it came from. */
+export interface PrintedPiece {
+  readonly text: string;
+  /**
+   * The argument indices from the printed term down to the node: `[]` is
+   * the term itself, `[1, 0]` its second argument's first. Coercion nodes
+   * count, since they are in the tree.
+   */
+  readonly path: readonly number[];
+  readonly kind: PieceKind;
+}
+
+/**
+ * `term`'s display text as pieces, each attributed to the node it came
+ * from: what lets a reader of the text put something under one subterm —
+ * a truth table's cell under each atom and connective, a highlight over
+ * one subformula. The pieces' texts joined are exactly `printTerm(lang,
+ * term)`.
+ *
+ * A notation's tokens belong to the node the notation writes; a
+ * connective's own pair, and the pair a subterm needs to read back in its
+ * slot, to the node they enclose; an application's argument brackets to
+ * the application; a space to the node whose layout set it. A spec's
+ * `@syntax elab` rules then rewrite the text, and each rewritten
+ * character keeps the node of the character it came from. Throws
+ * {@link UnprintableTermError} as display text does.
+ */
+export function printPieces(
+  lang: SurfaceLanguage,
+  term: Term,
+): readonly PrintedPiece[] {
+  const printed = displayed(lang, term);
+
+  return lang.spec.elabRules.length > 0
+    ? reattributed(printed.run, delaborateTracked(lang, printed.text))
+    : printed.run;
+}
+
+function displayed(lang: SurfaceLanguage, term: Term): Printed {
+  const printer: Printer = {
+    lang,
+    mode: "display",
+    rules: lang.scanner.rules,
+  };
+
+  return display(printer, term, lang.spec.display.dropOuterParens, []);
+}
+
+/**
+ * The pieces again over the delaborated text: each run of characters
+ * from one piece is a piece, and whitespace is a space wherever it came
+ * from.
+ */
+function reattributed(
+  run: readonly PrintedPiece[],
+  delaborated: Elaborated,
+): PrintedPiece[] {
+  const owner: number[] = [];
+
+  run.forEach((piece, index) => {
+    for (let at = 0; at < piece.text.length; at += 1) {
+      owner.push(index);
+    }
+  });
+
+  const out: { text: string; from: number; space: boolean }[] = [];
+  const { text, origin } = delaborated;
+
+  for (let at = 0; at < text.length; at += 1) {
+    const char = text[at] ?? "";
+    const from = owner[origin[at] ?? 0] ?? Math.max(0, run.length - 1);
+    const space = /\s/.test(char);
+    const last = out[out.length - 1];
+    // A surrogate pair is one character, and stays in one piece.
+    const low = /[\uDC00-\uDFFF]/.test(char);
+
+    if (
+      last !== undefined &&
+      (low || (last.from === from && last.space === space))
+    ) {
+      last.text += char;
+      continue;
+    }
+
+    out.push({ text: char, from, space });
+  }
+
+  return out.flatMap(({ text: piece, from, space }) => {
+    const source = run[from];
+
+    return source === undefined
+      ? []
+      : [
+          {
+            text: piece,
+            path: source.path,
+            kind: space ? "space" : source.kind,
+          },
+        ];
+  });
+}
+
+/** Display text, and the same text as attributed pieces. */
+interface Laid {
+  readonly text: string;
+  readonly run: readonly PrintedPiece[];
+}
+
+const NOTHING: Laid = { text: "", run: [] };
+
+function laid(text: string, path: readonly number[], kind: PieceKind): Laid {
+  return text.length === 0 ? NOTHING : { text, run: [{ text, path, kind }] };
+}
+
+function joined(...parts: readonly Laid[]): Laid {
+  return {
+    text: parts.map((part) => part.text).join(""),
+    run: parts.flatMap((part) => part.run),
+  };
+}
+
+/**
+ * `left` then `right` as {@link adjoin} sets them, the space it adds, if
+ * any, set by the node at `path`.
+ */
+function adjoined(
+  printer: Printer,
+  path: readonly number[],
+  left: Laid,
+  right: Laid,
+): Laid {
+  const text = adjoin(left.text, right.text, printer.rules);
+
+  return text.length === left.text.length + right.text.length
+    ? joined(left, right)
+    : joined(left, laid(" ", path, "space"), right);
+}
+
+/** Display pieces set as tight as the reader's delimiters allow. */
+function setTight(
+  printer: Printer,
+  path: readonly number[],
+  ...parts: readonly Laid[]
+): Laid {
+  return parts.reduce((left, right) => adjoined(printer, path, left, right));
+}
+
+/** Display text in the built-in grouping pair, the node at `path`'s. */
+function bracketed(
+  printer: Printer,
+  path: readonly number[],
+  inner: Laid,
+): Laid {
+  return setTight(
+    printer,
+    path,
+    laid("(", path, "bracket"),
+    inner,
+    laid(")", path, "bracket"),
+  );
+}
+
 const TIGHTEST = Number.POSITIVE_INFINITY;
 
 /** mm0.md: bare constructor application is `expression(1024)`. */
@@ -290,8 +463,7 @@ const APPLICATION_PRECEDENCE = 1024;
  * A piece of display text, with the two facts about it its context needs,
  * both in the parser's own precedence numbers.
  */
-interface Printed {
-  readonly text: string;
+interface Printed extends Laid {
   /** It stands bare in a slot read at `min` exactly when `head >= min`. */
   readonly head: number;
   /**
@@ -303,53 +475,62 @@ interface Printed {
   readonly tail: number;
 }
 
-function atom(text: string): Printed {
-  return { text, head: TIGHTEST, tail: TIGHTEST };
+function atom(text: Laid): Printed {
+  return { ...text, head: TIGHTEST, tail: TIGHTEST };
 }
 
 /**
  * A piece set in a slot the parser reads at `min`, with an operator of
  * precedence `next` (or nothing) written after it: bare when it re-reads
- * as itself there, parenthesized when it would not.
+ * as itself there, parenthesized when it would not. `path` is the piece's
+ * own node, whose the pair is.
  */
 function fit(
   printer: Printer,
   piece: Printed,
   min: number,
   next: number | null,
+  path: readonly number[],
 ): Printed {
   return piece.head >= min && (next === null || next < piece.tail)
     ? piece
-    : atom(grouped(printer, piece.text));
+    : atom(bracketed(printer, path, piece));
 }
 
 /**
  * `outer` is true, under `@syntax display drop-outer-parens`, for the whole
  * printed term and for a term the sort changes above ({@link outermost}):
  * the one pair a connective would wrap itself in is left off. Coercions
- * pass it through, since they print as what they wrap.
+ * pass it through, since they print as what they wrap. `path` is where
+ * `term` sits in the term being printed.
  */
-function display(printer: Printer, term: Term, outer = false): Printed {
+function display(
+  printer: Printer,
+  term: Term,
+  outer: boolean,
+  path: readonly number[],
+): Printed {
   const { lang } = printer;
 
   if (term.kind === "variable") {
-    return atom(term.name);
+    return atom(laid(term.name, path, "name"));
   }
 
   // Coercions are the parser's bookkeeping; the reader re-derives them.
   const inner = coerced(lang, term);
 
   if (inner !== null) {
-    return display(printer, inner, outer);
+    return display(printer, inner, outer, [...path, 0]);
   }
 
   const notation = lang.canonical.get(term.term);
 
   if (notation === undefined) {
-    return displayApplication(printer, term);
+    return displayApplication(printer, term, path);
   }
 
   const binders = lang.spec.terms.get(term.term)?.binders ?? [];
+  const at = (index: number): readonly number[] => [...path, index];
 
   if (notation.form === "simple" && notation.fixity !== "prefix") {
     const prec = precNum(notation.prec);
@@ -358,25 +539,39 @@ function display(printer: Printer, term: Term, outer = false): Printed {
     const connective = lang.isConnective(term.term);
     // A connective's operands are compounds of its own sort, which keep
     // their brackets under it: that is the full-paren convention.
-    const outerAt = (at: number): boolean =>
-      !connective && outermost(printer, term, term.args[at]);
-    const left = fitArg(printer, term.args[0], leftMin, prec, outerAt(0));
-    const right = fitArg(printer, term.args[1], rightMin, null, outerAt(1));
+    const outerAt = (index: number): boolean =>
+      !connective && outermost(printer, term, term.args[index]);
+    const left = fitArg(
+      printer,
+      term.args[0],
+      leftMin,
+      prec,
+      outerAt(0),
+      at(0),
+    );
+    const right = fitArg(
+      printer,
+      term.args[1],
+      rightMin,
+      null,
+      outerAt(1),
+      at(1),
+    );
     const tail = Math.min(rightMin, right.tail);
     const pieces = [
-      operand(left.text),
-      token(notation.token),
-      operand(right.text),
+      operand(left),
+      token(notation.token, path),
+      operand(right),
     ];
 
     // Connectives are spaced and self-parenthesized (the full-paren
     // convention), bar the outermost under drop-outer-parens.
     if (connective) {
-      const text = setPieces(printer, pieces, true);
+      const text = setPieces(printer, pieces, true, path);
 
       return outer
-        ? { text, head: prec, tail }
-        : atom(grouped(printer, text));
+        ? { ...text, head: prec, tail }
+        : atom(bracketed(printer, path, text));
     }
 
     // A juxtaposed combiner displays as nothing when both sides are
@@ -389,40 +584,41 @@ function display(printer: Printer, term: Term, outer = false): Printed {
       glueablePiece(lang, left.text) &&
       glueablePiece(lang, right.text);
     const text = glued
-      ? tight(printer, left.text, right.text)
-      : setPieces(printer, pieces, changesSort(lang, term.term));
+      ? setTight(printer, path, left, right)
+      : setPieces(printer, pieces, changesSort(lang, term.term), path);
 
-    return { text, head: prec, tail };
+    return { ...text, head: prec, tail };
   }
 
   if (notation.form === "simple") {
     // mm0.md: a prefix notation's intermediate arguments read at max,
     // its last at the notation's own precedence.
     const prec = precNum(notation.prec);
-    const pieces: Piece[] = [token(notation.token)];
+    const pieces: Piece[] = [token(notation.token, path)];
     let tail = TIGHTEST;
 
-    term.args.forEach((arg, at) => {
-      if (binders[at]?.binds === true) {
-        pieces.push(operand(display(printer, arg).text));
+    term.args.forEach((arg, index) => {
+      if (binders[index]?.binds === true) {
+        pieces.push(operand(display(printer, arg, false, at(index))));
         tail = TIGHTEST;
         return;
       }
 
-      const min = at === term.args.length - 1 ? prec : TIGHTEST;
+      const min = index === term.args.length - 1 ? prec : TIGHTEST;
       const piece = fit(
         printer,
-        display(printer, arg, outermost(printer, term, arg)),
+        display(printer, arg, outermost(printer, term, arg), at(index)),
         min,
         null,
+        at(index),
       );
 
-      pieces.push(operand(piece.text));
+      pieces.push(operand(piece));
       tail = Math.min(min, piece.tail);
     });
 
     return {
-      text: setPieces(printer, pieces, changesSort(lang, term.term)),
+      ...setPieces(printer, pieces, changesSort(lang, term.term), path),
       head: prec,
       tail,
     };
@@ -431,45 +627,47 @@ function display(printer: Printer, term: Term, outer = false): Printed {
   const first = notation.literals[0];
 
   if (first?.kind !== "constant") {
-    return displayApplication(printer, term);
+    return displayApplication(printer, term, path);
   }
 
   // General notation: the head, then the parser's own slots in order.
-  const pieces: Piece[] = [token(first.token)];
+  const pieces: Piece[] = [token(first.token, path)];
   let tail = TIGHTEST;
 
   for (const part of generalParts(notation, first.prec)) {
     if (part.kind === "constant") {
-      pieces.push(token(part.token));
+      pieces.push(token(part.token, path));
       tail = TIGHTEST;
       continue;
     }
 
-    const arg = term.args[part.slot.index];
+    const index = part.slot.index;
+    const arg = term.args[index];
 
     if (arg === undefined) {
       continue;
     }
 
     if (part.slot.binder.binds) {
-      pieces.push(operand(display(printer, arg).text));
+      pieces.push(operand(display(printer, arg, false, at(index))));
       tail = TIGHTEST;
       continue;
     }
 
     const piece = fit(
       printer,
-      display(printer, arg, outermost(printer, term, arg)),
+      display(printer, arg, outermost(printer, term, arg), at(index)),
       part.slot.prec,
       null,
+      at(index),
     );
 
-    pieces.push(operand(piece.text));
+    pieces.push(operand(piece));
     tail = Math.min(part.slot.prec, piece.tail);
   }
 
   return {
-    text: setPieces(printer, pieces, changesSort(lang, term.term)),
+    ...setPieces(printer, pieces, changesSort(lang, term.term), path),
     head: precNum(first.prec),
     tail,
   };
@@ -481,10 +679,11 @@ function fitArg(
   min: number,
   next: number | null,
   outer: boolean,
+  path: readonly number[],
 ): Printed {
   return arg === undefined
-    ? { text: "", head: TIGHTEST, tail: TIGHTEST }
-    : fit(printer, display(printer, arg, outer), min, next);
+    ? { ...NOTHING, head: TIGHTEST, tail: TIGHTEST }
+    : fit(printer, display(printer, arg, outer, path), min, next, path);
 }
 
 /**
@@ -538,8 +737,10 @@ function changesSort(lang: SurfaceLanguage, name: string): boolean {
 function displayApplication(
   printer: Printer,
   term: Term & { kind: "app" },
+  path: readonly number[],
 ): Printed {
   const { lang } = printer;
+  const head = laid(term.term, path, "name");
 
   if (term.args.length === 0) {
     // Its one place is the sole argument of a name, which is elided
@@ -548,7 +749,7 @@ function displayApplication(
       throw new UnprintableTermError(term.term);
     }
 
-    return atom(term.term);
+    return atom(head);
   }
 
   const sole = term.args.length === 1 ? term.args[0] : undefined;
@@ -562,7 +763,7 @@ function displayApplication(
       bare.kind === "app" &&
       bare.term === elided.name
     ) {
-      return atom(term.term);
+      return atom(head);
     }
 
     const combiner = lang.juxtaposedOf.get(sole.sort);
@@ -571,28 +772,31 @@ function displayApplication(
       // The parser folds glued leaves to the left, so only a left-nested
       // tree flattens back into itself: `Rxyz` is `R((x,y),z)`, and a
       // right operand that is itself a combination keeps its brackets.
-      const leaves: string[] = [];
-      const flatten = (node: Term): boolean => {
-        const at = uncoerced(lang, node);
+      const leaves: Laid[] = [];
+      const flatten = (node: Term, from: readonly number[]): boolean => {
+        const [at, atPath] = peeled(lang, node, from);
 
         if (at.kind !== "app" || at.term !== combiner.name) {
-          leaves.push(display(printer, at).text);
+          leaves.push(display(printer, at, false, atPath));
           return true;
         }
 
         const [left, right] = at.args;
-        const last = right === undefined ? undefined : uncoerced(lang, right);
+        const [last, lastPath] =
+          right === undefined
+            ? [undefined, atPath]
+            : peeled(lang, right, [...atPath, 1]);
 
         if (
           left === undefined ||
           last === undefined ||
           (last.kind === "app" && last.term === combiner.name) ||
-          !flatten(left)
+          !flatten(left, [...atPath, 0])
         ) {
           return false;
         }
 
-        leaves.push(display(printer, last).text);
+        leaves.push(display(printer, last, false, lastPath));
         return true;
       };
 
@@ -600,10 +804,10 @@ function displayApplication(
       // parser would consume back. A compound element falls back to the
       // parenthesized form.
       if (
-        flatten(sole) &&
-        leaves.every((leaf) => glueablePiece(lang, leaf))
+        flatten(sole, [...path, 0]) &&
+        leaves.every((leaf) => glueablePiece(lang, leaf.text))
       ) {
-        return atom(tight(printer, term.term, ...leaves));
+        return atom(setTight(printer, path, head, ...leaves));
       }
     }
   }
@@ -612,17 +816,18 @@ function displayApplication(
   const binds = term.args.some((_, at) => binders[at]?.binds === true);
   const pieces = term.args.map((arg, at) =>
     binders[at]?.binds === true
-      ? display(printer, arg).text
-      : grouped(
+      ? display(printer, arg, false, [...path, at])
+      : bracketed(
           printer,
-          display(printer, arg, outermost(printer, term, arg)).text,
+          path,
+          display(printer, arg, outermost(printer, term, arg), [...path, at]),
         ),
   );
 
   // A name with a bound binder is read as bare application, which a
   // slot tighter than expression(1024) refuses.
   return {
-    text: tight(printer, term.term, ...pieces),
+    ...setTight(printer, path, head, ...pieces),
     head: binds ? APPLICATION_PRECEDENCE : TIGHTEST,
     tail: TIGHTEST,
   };
@@ -653,7 +858,17 @@ function glueablePiece(lang: SurfaceLanguage, piece: string): boolean {
 
 /** The term with any coercion wrappers peeled off — what actually prints. */
 function uncoerced(lang: SurfaceLanguage, term: Term): Term {
+  return peeled(lang, term, [])[0];
+}
+
+/** {@link uncoerced}, with the path it ends at from `path`. */
+function peeled(
+  lang: SurfaceLanguage,
+  term: Term,
+  path: readonly number[],
+): readonly [Term, readonly number[]] {
   let at = term;
+  let atPath = path;
 
   while (
     at.kind === "app" &&
@@ -667,7 +882,8 @@ function uncoerced(lang: SurfaceLanguage, term: Term): Term {
     }
 
     at = inner;
+    atPath = [...atPath, 0];
   }
 
-  return at;
+  return [at, atPath];
 }

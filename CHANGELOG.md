@@ -2,6 +2,22 @@
 
 ## Unreleased
 
+**Display text, attributed.** `printPieces(lang, term)` is `printTerm`'s
+display text as pieces, each with the path of the node it came from and
+whether it is a notation's token, a bracket, a name or a space. Their texts
+join to exactly the display text; a notation's tokens and a connective's
+own pair are its node's, an application's argument brackets the
+application's, and text an `@syntax elab` rule rewrites keeps the node of
+the text it came from. `tests/pieces.test.ts` checks it over generated
+terms: the join, every path a node of the term, and each node's pieces one
+unbroken run where no rule rewrites the text.
+
+**Elab offsets count UTF-16 units.** The offset map an elab pass keeps
+was built over code points while the scanner counts UTF-16 units, so in a
+language with elab rules every offset after an astral character (`𝕋`) was
+one short per character: a diagnostic after `1.1 𝕋 A` pointed at the space
+before its token.
+
 **Normal forms and identity, as the engine has them.** `normalTerm(lang,
 term, { variables? })` is a term's normal form under the theory's
 `@rewrite` rules and `@acui` laws, with defs left folded: children first,

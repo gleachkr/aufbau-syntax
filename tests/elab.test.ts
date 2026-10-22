@@ -510,3 +510,28 @@ infixl eq: $=$ prec 50;
     ).toEqual(["delimiter_unknown"]);
   });
 });
+
+describe("offsets count UTF-16 units, as the scanner does", () => {
+  test("a diagnostic after an astral token still points at its token", async () => {
+    // Open Logic's intuitionistic prefixes are elab rules, and its signs
+    // are astral (`𝕋` is two units). A map over code points came up one
+    // short per `𝕋`, and the squiggle landed on the space before `∧`.
+    const path = new URL(
+      "./fixtures/carnap/open-logic-intuitionistic.mm0",
+      import.meta.url,
+    ).pathname;
+    const lang = new SurfaceLanguage(
+      parseSpec(await readFile(path, "utf8")).spec,
+    );
+    const input = "1.1 𝕋 A ∧ B ∧ C ∧ D ∧ ∧";
+    const read = lang.parse(input, { sort: "pfm" });
+
+    if (read.ok) {
+      throw new Error("expected the trailing ∧ to be refused");
+    }
+
+    const start = input.lastIndexOf("∧");
+
+    expect(read.diagnostics[0]?.span).toEqual({ start, end: start + 1 });
+  });
+});

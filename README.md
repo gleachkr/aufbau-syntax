@@ -84,6 +84,12 @@ if (result.ok) {
 }
 ```
 
+`printPieces(language, term)` is the display text again, as pieces that
+each name the node they came from — `{ text: "∧", path: [1], kind:
+"token" }` — for a reader that puts something under each subterm: a truth
+table's cell under each connective, a highlight over one subformula. The
+pieces join to exactly what `printTerm` displays.
+
 ### Reading text that belongs to a theorem
 
 Text taken from inside a theorem is read in that theorem's **scope** — its

@@ -33,8 +33,8 @@ export type {
   ParseSuccess,
 } from "./parse.js";
 export { SurfaceLanguage } from "./parse.js";
-export type { PrintMode } from "./print.js";
-export { printTerm, UnprintableTermError } from "./print.js";
+export type { PieceKind, PrintedPiece, PrintMode } from "./print.js";
+export { printPieces, printTerm, UnprintableTermError } from "./print.js";
 export type {
   ElabRule,
   LintName,
