@@ -272,7 +272,7 @@ function engineOperand(printer: Printer, term: Term | undefined): string {
 
   const { lang } = printer;
   const rendered = engine(printer, term);
-  const bearer = uncoerced(lang, term);
+  const bearer = lang.uncoerced(term);
   const bare =
     bearer.kind === "variable" ||
     (bearer.kind === "app" &&
@@ -702,7 +702,7 @@ function outermost(
   return (
     arg !== undefined &&
     printer.lang.spec.display.dropOuterParens &&
-    uncoerced(printer.lang, arg).sort !== parent.sort
+    printer.lang.uncoerced(arg).sort !== parent.sort
   );
 }
 
@@ -755,7 +755,7 @@ function displayApplication(
   const sole = term.args.length === 1 ? term.args[0] : undefined;
 
   if (sole !== undefined) {
-    const bare = uncoerced(lang, sole);
+    const bare = lang.uncoerced(sole);
     const elided = lang.elidedOf.get(sole.sort);
 
     if (
@@ -856,12 +856,7 @@ function glueablePiece(lang: SurfaceLanguage, piece: string): boolean {
   );
 }
 
-/** The term with any coercion wrappers peeled off — what actually prints. */
-function uncoerced(lang: SurfaceLanguage, term: Term): Term {
-  return peeled(lang, term, [])[0];
-}
-
-/** {@link uncoerced}, with the path it ends at from `path`. */
+/** {@link SurfaceLanguage.uncoerced}, with the path it ends at from `path`. */
 function peeled(
   lang: SurfaceLanguage,
   term: Term,

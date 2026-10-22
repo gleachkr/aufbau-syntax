@@ -12,6 +12,7 @@
 import type { SurfaceLanguage } from "./parse.js";
 import type { Binder } from "./reader/statements.js";
 import type { Term } from "./term.js";
+import { substitute } from "./term.js";
 
 /** Each language's def bodies, read once; null for one that does not read. */
 const bodies = new WeakMap<SurfaceLanguage, Map<string, Term | null>>();
@@ -81,25 +82,6 @@ function namesIn(term: Term, into: Set<string>): Set<string> {
   return into;
 }
 
-/** `term` with each variable `values` names replaced. */
-function substitute(term: Term, values: ReadonlyMap<string, Term>): Term {
-  if (term.kind === "variable") {
-    const value = values.get(term.name);
-
-    if (value === undefined) {
-      return term;
-    }
-
-    // A bound binder's argument is a variable, standing where the
-    // definiens binds: it keeps that occurrence's binding flag.
-    return value.kind === "variable"
-      ? { ...value, binder: term.binder }
-      : value;
-  }
-
-  return { ...term, args: term.args.map((arg) => substitute(arg, values)) };
-}
-
 /**
  * `term` with every def in it unfolded, innermost first, and the unfolded
  * definiens unfolded again, since a def may use an earlier one. A term with
@@ -149,20 +131,11 @@ export function unfoldDefinitions(lang: SurfaceLanguage, term: Term): Term {
       continue;
     }
 
-    const fresh = lang.spec.sorts
-      .get(sort)
-      ?.vars.find((name) => !taken.has(name));
+    const fresh = lang.freshName(sort, taken);
 
-    if (fresh !== undefined) {
-      taken.add(fresh);
-      values.set(dummy.name, {
-        binder: false,
-        grouped: false,
-        kind: "variable",
-        name: fresh,
-        sort,
-        span: body.span,
-      });
+    if (fresh?.kind === "variable") {
+      taken.add(fresh.name);
+      values.set(dummy.name, { ...fresh, span: body.span });
     }
   }
 

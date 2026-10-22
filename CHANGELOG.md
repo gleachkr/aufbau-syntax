@@ -2,6 +2,23 @@
 
 ## Unreleased
 
+**Building terms.** `SurfaceLanguage` builds the trees a caller would
+otherwise spell out field by field. `app(name, args)` applies a
+constructor to its arguments as written: the node at the return sort, each
+argument in the coercions to its binder's sort, a variable filling a bound
+binder marked as binding, and a `TermBuildError` for a name, an argument
+count, or a sort the parser could not have read. `variable(name, sort?)`
+takes its sort from the name's `@vars` pool when none is given, and
+`sortOfName(name)` is that lookup. `freshName(sort, avoid)` is a pool token
+of the sort none of `avoid` names, or of a pool that coerces into the sort,
+inside the coercions; `unfoldDefinitions` renames a dot-dummy with it.
+`coerceTerm(term, sort)` and `uncoerced(term)` put a term's coercions on
+and take them off; the parser and the printer use them too. Two tree
+operations are exported: `substitute(term, values)`, by name, keeping an
+occurrence's binding flag when a variable replaces it, and
+`freeVariables(term)`. `tests/build.test.ts` rebuilds every generated term
+from its constructors and variables and gets it back.
+
 **Display text, attributed.** `printPieces(lang, term)` is `printTerm`'s
 display text as pieces, each with the path of the node it came from and
 whether it is a notation's token, a bracket, a name or a space. Their texts

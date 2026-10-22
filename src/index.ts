@@ -32,7 +32,7 @@ export type {
   ParseResult,
   ParseSuccess,
 } from "./parse.js";
-export { SurfaceLanguage } from "./parse.js";
+export { SurfaceLanguage, TermBuildError } from "./parse.js";
 export type { PieceKind, PrintedPiece, PrintMode } from "./print.js";
 export { printPieces, printTerm, UnprintableTermError } from "./print.js";
 export type {
@@ -95,7 +95,7 @@ export {
   statementScope,
 } from "./statement.js";
 export type { AppTerm, Fixity, Term, VariableTerm } from "./term.js";
-export { walkTerm } from "./term.js";
+export { freeVariables, substitute, walkTerm } from "./term.js";
 export { unfoldDefinitions } from "./unfold.js";
 export type { NameRef, Vocabulary } from "./vocabulary.js";
 export { surfaceVocabulary } from "./vocabulary.js";

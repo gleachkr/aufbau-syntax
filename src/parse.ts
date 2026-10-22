@@ -67,6 +67,21 @@ const TEMPLATES: Record<string, string> = {
     "The notation for {term} does not cover all of its arguments.",
 };
 
+/**
+ * A term {@link SurfaceLanguage.app} or {@link SurfaceLanguage.variable}
+ * was asked to build that the parser could never have read: a caller's
+ * bug, refused rather than built as something plausible.
+ */
+export class TermBuildError extends Error {
+  constructor(message: string) {
+    super(message);
+    this.name = "TermBuildError";
+  }
+}
+
+/** Where a built node stands in the source: nowhere. */
+const NO_SPAN: Span = { end: 0, start: 0 };
+
 export function precNum(prec: number | "max"): number {
   return prec === "max" ? Number.POSITIVE_INFINITY : prec;
 }
@@ -437,6 +452,190 @@ export class SurfaceLanguage {
   }
 
   /**
+   * `term` read at `sort`, inside the coercions the parser puts around it
+   * there — `F(x)` is `F` over `t2s (v2t x)` in forallx — or null where no
+   * coercion path leads from its sort to `sort`. A term already at `sort`
+   * comes back as itself.
+   */
+  coerceTerm(term: Term, sort: string): Term | null {
+    const path = this.coerce(term.sort, sort);
+
+    if (path === null) {
+      return null;
+    }
+
+    let wrapped = term;
+
+    for (const name of path) {
+      wrapped = {
+        args: [wrapped],
+        fixity: null,
+        grouped: false,
+        kind: "app",
+        prec: null,
+        sort: this.spec.terms.get(name)?.returnSort ?? sort,
+        span: wrapped.span,
+        term: name,
+        token: null,
+      };
+    }
+
+    return wrapped;
+  }
+
+  /** `term` with any coercion wrappers peeled off: what actually prints. */
+  uncoerced(term: Term): Term {
+    let at = term;
+
+    while (
+      at.kind === "app" &&
+      at.args.length === 1 &&
+      this.coercionNames.has(at.term)
+    ) {
+      const inner = at.args[0];
+
+      if (inner === undefined) {
+        break;
+      }
+
+      at = inner;
+    }
+
+    return at;
+  }
+
+  /**
+   * A constructor applied to `args`, as the parser would have read it: the
+   * node at the constructor's return sort, each argument inside the
+   * coercions to its binder's sort, and a variable filling a bound binder
+   * marked as binding there (the `x` of `∀x`). Throws a
+   * {@link TermBuildError} for a name that is not a term, the wrong number
+   * of arguments, an argument no coercion takes to its binder's sort, or a
+   * bound binder given anything but a variable of its sort.
+   *
+   * The node has no source behind it: an empty span, no brackets of its
+   * own, and no fixity, precedence or token, none of which the printer
+   * asks for.
+   */
+  app(name: string, args: readonly Term[]): AppTerm {
+    const info = this.spec.terms.get(name);
+
+    if (info === undefined) {
+      throw new TermBuildError(`“${name}” is not a term of this language.`);
+    }
+
+    if (args.length !== info.binders.length) {
+      throw new TermBuildError(
+        `${name} takes ${info.binders.length} argument${info.binders.length === 1 ? "" : "s"}, not ${args.length}.`,
+      );
+    }
+
+    return {
+      args: args.map((arg, at) => this.argument(name, info.binders[at], arg)),
+      fixity: null,
+      grouped: false,
+      kind: "app",
+      prec: null,
+      sort: info.returnSort,
+      span: NO_SPAN,
+      term: name,
+      token: null,
+    };
+  }
+
+  /** {@link app}'s argument for one binder. */
+  private argument(
+    name: string,
+    binder: Binder | undefined,
+    arg: Term,
+  ): Term {
+    const sort = binderSort(binder);
+
+    if (binder?.binds === true) {
+      if (arg.kind !== "variable" || arg.sort !== sort) {
+        throw new TermBuildError(
+          `${name} binds a variable of sort ${sort} as ${binder.name}.`,
+        );
+      }
+
+      return arg.binder ? arg : { ...arg, binder: true };
+    }
+
+    const wrapped = this.coerceTerm(
+      arg.kind === "variable" && arg.binder ? { ...arg, binder: false } : arg,
+      sort,
+    );
+
+    if (wrapped === null) {
+      throw new TermBuildError(
+        `${name} takes ${sort} as ${binder?.name}; nothing takes ${arg.sort} there.`,
+      );
+    }
+
+    return wrapped;
+  }
+
+  /**
+   * A variable occurrence, not binding (an {@link app} marks one that
+   * fills a bound binder), at `sort` or, without one, at the sort whose
+   * `@vars` pool holds `name`. Throws a {@link TermBuildError} for a name
+   * in no pool and no sort given.
+   */
+  variable(name: string, sort?: string): VariableTerm {
+    const at = sort ?? this.sortOfName(name);
+
+    if (at === null) {
+      throw new TermBuildError(`“${name}” is in no sort's @vars pool.`);
+    }
+
+    return {
+      binder: false,
+      grouped: false,
+      kind: "variable",
+      name,
+      sort: at,
+      span: NO_SPAN,
+    };
+  }
+
+  /**
+   * The sort whose `@vars` pool holds `name`, as the parser reads the
+   * name; null for a name in no pool.
+   */
+  sortOfName(name: string): string | null {
+    const ref = this.scanner.name(name);
+
+    return ref?.kind === "var" ? ref.sort : null;
+  }
+
+  /**
+   * A term of `sort` that is one pool token none of `avoid` names: the
+   * first of `sort`'s own pool, as a variable, else the first of a pool
+   * whose sort coerces into `sort`, inside those coercions — a name where
+   * the sort is terms and names come from a pool of their own. Pools are
+   * taken in declaration order; null when every one is spent.
+   */
+  freshName(sort: string, avoid: ReadonlySet<string>): Term | null {
+    const sorts = [...this.spec.sorts.values()];
+    const own = sorts.filter((info) => info.name === sort);
+    const others = sorts.filter(
+      (info) => info.name !== sort && this.coerce(info.name, sort) !== null,
+    );
+
+    for (const info of [...own, ...others]) {
+      const name = info.vars.find(
+        (token) => !avoid.has(token) && this.sortOfName(token) === info.name,
+      );
+
+      if (name !== undefined) {
+        return this.coerceTerm(this.variable(name, info.name), sort);
+      }
+    }
+
+    return null;
+  }
+
+  /**
    * Parse surface text. `sort` is what the result is read at: the text
    * must parse to that sort, or coerce into it, or it is refused. It
    * defaults to `provableSort` — the first sort the file marks `provable`,
@@ -694,31 +893,7 @@ class Parse {
   }
 
   private coerceTerm(term: Term, target: string): Term | null {
-    const path = this.lang.coerce(term.sort, target);
-
-    if (path === null) {
-      return null;
-    }
-
-    let wrapped = term;
-
-    for (const name of path) {
-      const info = this.lang.spec.terms.get(name);
-
-      wrapped = {
-        kind: "app",
-        term: name,
-        args: [wrapped],
-        sort: info?.returnSort ?? target,
-        span: wrapped.span,
-        grouped: false,
-        fixity: null,
-        prec: null,
-        token: null,
-      };
-    }
-
-    return wrapped;
+    return this.lang.coerceTerm(term, target);
   }
 
   private coerceOrReport(term: Term, target: string): Term | null {

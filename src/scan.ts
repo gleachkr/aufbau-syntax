@@ -91,6 +91,11 @@ export class Scanner {
     this.tokens = tokens;
   }
 
+  /** What a lexicon name refers to, out of any scope; undefined for none. */
+  name(name: string): NameRef | undefined {
+    return this.names.get(name);
+  }
+
   /**
    * The chunk at `position` in `text`, after skipping whitespace, and what
    * it can be read as: the notation token first, then the name.

@@ -76,3 +76,45 @@ export function walkTerm(
     walkTerm(arg, visit, scope);
   }
 }
+
+/**
+ * `term` with each variable `values` names replaced, bound or free: a
+ * def's binders by its arguments, a rule's metavariables by what they
+ * matched. Capture is the caller's business. A variable replaced by a
+ * variable keeps its occurrence's binding flag, since it stands where the
+ * occurrence bound.
+ */
+export function substitute(
+  term: Term,
+  values: ReadonlyMap<string, Term>,
+): Term {
+  if (term.kind === "variable") {
+    const value = values.get(term.name);
+
+    if (value === undefined) {
+      return term;
+    }
+
+    return value.kind === "variable" && value.binder !== term.binder
+      ? { ...value, binder: term.binder }
+      : value;
+  }
+
+  return { ...term, args: term.args.map((arg) => substitute(arg, values)) };
+}
+
+/**
+ * The names of the variables occurring free in `term`: not in a binding
+ * slot, and not bound by one around them, by {@link walkTerm}'s scoping.
+ */
+export function freeVariables(term: Term): Set<string> {
+  const free = new Set<string>();
+
+  walkTerm(term, (node, bound) => {
+    if (node.kind === "variable" && !node.binder && !bound.has(node.name)) {
+      free.add(node.name);
+    }
+  });
+
+  return free;
+}

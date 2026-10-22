@@ -159,6 +159,32 @@ engine can prove its way (a rewrite under a term with no `@congr`); the
 engine then compares the term as written. `engineForm(language, term)` is
 the term as the engine compares it, the one `termKey` keys.
 
+### Building terms
+
+A tree that was never text is built through the language, so it comes out
+as the parser would have read it:
+
+```ts
+const x = language.variable("x");             // sort from x's @vars pool
+language.app("all", [x, language.app("F", [x])]);  // ∀x F(x)
+```
+
+`language.app(name, args)` takes the constructor's arguments as written,
+without coercions: it gives the node its return sort, wraps each argument
+in the coercions to its binder's sort (`x` goes into `F` as `t2s (v2t
+x)`), marks a variable that fills a bound binder as binding, and throws a
+`TermBuildError` for an argument count or a sort the parser could not have
+read. `language.coerceTerm(term, sort)` is the wrapping alone, and
+`language.uncoerced(term)` takes it off again. `language.sortOfName(name)`
+is the sort whose `@vars` pool holds a name, and
+`language.freshName(sort, avoid)` a term of the sort that is one pool token
+none of `avoid` names — a variable from the sort's own pool, else a token
+of a pool that coerces into it.
+
+`substitute(term, values)` replaces variables by name, bound or free, a
+replacing variable keeping the binding flag of the occurrence it replaces;
+`freeVariables(term)` names the variables a term leaves free.
+
 ### `@abstract`
 
 `abstractContext(language, { left, right?, leftPlug, rightPlug, hole }, { variables? })`
