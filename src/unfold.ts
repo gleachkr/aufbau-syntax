@@ -12,7 +12,7 @@
 import type { SurfaceLanguage } from "./parse.js";
 import type { Binder } from "./reader/statements.js";
 import type { Term } from "./term.js";
-import { substitute } from "./term.js";
+import { substitute, variables } from "./term.js";
 
 /** Each language's def bodies, read once; null for one that does not read. */
 const bodies = new WeakMap<SurfaceLanguage, Map<string, Term | null>>();
@@ -69,19 +69,6 @@ export function definiens(lang: SurfaceLanguage, name: string): Term | null {
   return read;
 }
 
-/** Every variable name a term mentions, bound or free. */
-function namesIn(term: Term, into: Set<string>): Set<string> {
-  if (term.kind === "variable") {
-    into.add(term.name);
-  } else {
-    for (const arg of term.args) {
-      namesIn(arg, into);
-    }
-  }
-
-  return into;
-}
-
 /**
  * `term` with every def in it unfolded, innermost first, and the unfolded
  * definiens unfolded again, since a def may use an earlier one. A term with
@@ -116,13 +103,8 @@ export function unfoldDefinitions(lang: SurfaceLanguage, term: Term): Term {
     }
   });
 
-  const used = new Set<string>();
-
-  for (const arg of args) {
-    namesIn(arg, used);
-  }
-
-  const taken = namesIn(body, new Set(used));
+  const used = new Set(args.flatMap((arg) => [...variables(arg).keys()]));
+  const taken = new Set([...used, ...variables(body).keys()]);
 
   for (const dummy of info.definition?.dummies ?? []) {
     const sort = sortOf(dummy);

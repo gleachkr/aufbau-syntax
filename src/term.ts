@@ -118,3 +118,19 @@ export function freeVariables(term: Term): Set<string> {
 
   return free;
 }
+
+/**
+ * Each variable name in `term`, bound or free and binding occurrences too,
+ * with its sort, in the order it first occurs.
+ */
+export function variables(term: Term): Map<string, string> {
+  const found = new Map<string, string>();
+
+  walkTerm(term, (node) => {
+    if (node.kind === "variable" && !found.has(node.name)) {
+      found.set(node.name, node.sort);
+    }
+  });
+
+  return found;
+}

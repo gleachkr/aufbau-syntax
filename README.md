@@ -183,7 +183,9 @@ of a pool that coerces into it.
 
 `substitute(term, values)` replaces variables by name, bound or free, a
 replacing variable keeping the binding flag of the occurrence it replaces;
-`freeVariables(term)` names the variables a term leaves free.
+`freeVariables(term)` names the variables a term leaves free, and
+`variables(term)` maps every variable name in it, binding occurrences too,
+to its sort, in the order each first occurs.
 
 ### `@abstract`
 

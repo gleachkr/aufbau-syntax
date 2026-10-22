@@ -95,7 +95,7 @@ export {
   statementScope,
 } from "./statement.js";
 export type { AppTerm, Fixity, Term, VariableTerm } from "./term.js";
-export { freeVariables, substitute, walkTerm } from "./term.js";
+export { freeVariables, substitute, variables, walkTerm } from "./term.js";
 export { unfoldDefinitions } from "./unfold.js";
 export type { NameRef, Vocabulary } from "./vocabulary.js";
 export { surfaceVocabulary } from "./vocabulary.js";

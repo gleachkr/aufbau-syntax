@@ -13,11 +13,12 @@ takes its sort from the name's `@vars` pool when none is given, and
 of the sort none of `avoid` names, or of a pool that coerces into the sort,
 inside the coercions; `unfoldDefinitions` renames a dot-dummy with it.
 `coerceTerm(term, sort)` and `uncoerced(term)` put a term's coercions on
-and take them off; the parser and the printer use them too. Two tree
+and take them off; the parser and the printer use them too. Three tree
 operations are exported: `substitute(term, values)`, by name, keeping an
-occurrence's binding flag when a variable replaces it, and
-`freeVariables(term)`. `tests/build.test.ts` rebuilds every generated term
-from its constructors and variables and gets it back.
+occurrence's binding flag when a variable replaces it, `freeVariables(term)`,
+and `variables(term)`, every variable name with its sort.
+`tests/build.test.ts` rebuilds every generated term from its constructors
+and variables and gets it back.
 
 **Display text, attributed.** `printPieces(lang, term)` is `printTerm`'s
 display text as pieces, each with the path of the node it came from and

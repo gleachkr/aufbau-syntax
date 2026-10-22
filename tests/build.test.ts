@@ -8,6 +8,7 @@ import {
   SurfaceLanguage,
   substitute,
   TermBuildError,
+  variables,
 } from "../src/index";
 import { seeded, termGenerator } from "./helpers/terms";
 
@@ -157,6 +158,20 @@ describe("tree operations", () => {
   test("freeVariables leaves out bound and binding occurrences", () => {
     expect([...freeVariables(read("∀x (F(x) ∧ G(y))"))]).toEqual(["y"]);
     expect([...freeVariables(read("F(x) ∧ ∀x G(x)"))]).toEqual(["x"]);
+  });
+
+  test("variables lists each name once, binding occurrences too, with its sort", () => {
+    expect([...variables(read("F(y) ∧ ∀x G(x, y)"))]).toEqual([
+      ["y", "var"],
+      ["x", "var"],
+    ]);
+
+    const parsed = ubc.parse("∀x F(x, a)", { lints: false });
+
+    expect(parsed.ok && [...variables(parsed.term)]).toEqual([
+      ["x", "var"],
+      ["a", "name"],
+    ]);
   });
 
   test("substitute replaces a variable and keeps a binding flag", () => {
