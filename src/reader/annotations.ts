@@ -29,6 +29,8 @@ import { type Diagnostic, diagnostic, type Span } from "../diagnostics.js";
 export const LINT_NAMES = [
   "parenthesize-binary-only",
   "closed-sentences",
+  "distinct-binders",
+  "non-vacuous-binders",
 ] as const;
 
 export type LintName = (typeof LINT_NAMES)[number];

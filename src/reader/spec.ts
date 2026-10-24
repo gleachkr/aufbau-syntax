@@ -20,6 +20,7 @@ import {
   type Severity,
   type Span,
 } from "../diagnostics.js";
+import type { Binding } from "../term.js";
 import { nameOnlyTerms, surfaceVocabulary } from "../vocabulary.js";
 import {
   type ElabRule,
@@ -61,6 +62,15 @@ export interface TermInfo {
    */
   readonly acui: Acui | null;
   readonly binders: readonly Binder[];
+  /**
+   * The bound binders that bind, each with the arguments it binds in. A
+   * `{x}` binder binds only when the return sort does not depend on it,
+   * and binds in exactly the arguments whose types depend on it, as
+   * mm0.md's free-variable rule reads a term. `term all {x: var} (ph: wff
+   * x): wff` binds x in ph; `term v {x: var}: tm x` binds nothing, and
+   * x passes through free.
+   */
+  readonly bindings: readonly Binding[];
   /** `@syntax elided`: supplied when an argument of its sort is missing. */
   readonly elided: boolean;
   readonly foreignAnnotations: readonly Annotation[];
@@ -87,6 +97,8 @@ export interface TermInfo {
    * See {@link OperandRelation} for what each one names.
    */
   readonly refuses: ReadonlySet<OperandRelation>;
+  /** The bound binders the return sort depends on: `x` in `wff x`. */
+  readonly returnDependencies: readonly string[];
   readonly returnSort: string;
   readonly roles: readonly string[];
   readonly span: Span;
@@ -302,6 +314,36 @@ function report(
   diagnostics.push(
     diagnostic(id, TEMPLATES[id] ?? id, params, span, severity),
   );
+}
+
+/** {@link TermInfo.bindings} for these binders and return dependencies. */
+function bindingsOf(
+  binders: readonly Binder[],
+  returnDependencies: readonly string[],
+): Binding[] {
+  const bindings: Binding[] = [];
+
+  binders.forEach((binder, at) => {
+    if (!binder.binds || returnDependencies.includes(binder.name)) {
+      return;
+    }
+
+    const scope: number[] = [];
+
+    binders.forEach((other, index) => {
+      if (
+        !other.binds &&
+        "dependencies" in other.type &&
+        other.type.dependencies.includes(binder.name)
+      ) {
+        scope.push(index);
+      }
+    });
+
+    bindings.push({ binder: at, scope });
+  });
+
+  return bindings;
 }
 
 /**
@@ -731,8 +773,10 @@ export function parseSpec(source: string): SpecParse {
           break;
         }
 
-        const returnSort =
-          statement.returnChain[statement.returnChain.length - 1]?.sort ?? "";
+        const returnType =
+          statement.returnChain[statement.returnChain.length - 1];
+        const returnSort = returnType?.sort ?? "";
+        const returnDependencies = returnType?.dependencies ?? [];
 
         // Arrow sugar (`a > b > c`) desugars to extra anonymous regular
         // binders so arity means one thing everywhere downstream. A
@@ -756,6 +800,7 @@ export function parseSpec(source: string): SpecParse {
         terms.set(statement.name, {
           acui: readAcui(foreign, binders, returnSort, terms, diagnostics),
           binders,
+          bindings: bindingsOf(binders, returnDependencies),
           elided: false,
           foreignAnnotations: foreign,
           isDef: statement.kind === "def",
@@ -770,6 +815,7 @@ export function parseSpec(source: string): SpecParse {
           juxtaposedCompound: false,
           name: statement.name,
           refuses: new Set(),
+          returnDependencies,
           returnSort,
           roles: [],
           span: statement.span,

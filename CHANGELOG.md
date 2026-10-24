@@ -2,6 +2,31 @@
 
 ## Unreleased
 
+**Binding follows MM0's dependencies.** A `{x}` binder binds only when the
+return sort does not depend on x, and binds in exactly the arguments whose
+types depend on x, as mm0.md's free-variable rule reads a term. Before,
+every bound binder was read as binding, over every argument after it, so
+`term v {x: var}: tm x` hid a free x and `term sb {x: var} (t: tm) (p: wff
+x): wff` bound the x of `t`. `TermInfo` gains `returnDependencies` and
+`bindings` (`{ binder, scope }` argument indices), and **`AppTerm` gains a
+required `bindings` field**, copied from its constructor (empty for a
+coercion), so a walk scopes a binding without the spec; a term built by
+hand must now supply it. A variable in a binder slot that binds nothing is
+a free occurrence (`binder: false`), and its sort no longer counts toward
+`bindableSorts`. `bindsAt(bindings, at)` says whether argument `at` binds,
+`scopeOf(term, at, bound)` is the names in scope at one argument, and
+`bindingSites(term)` links each non-binding variable occurrence to the
+path of the binding occurrence that binds it, the innermost, or `null`
+when it is free. Every shipped theory reads as
+before: their binders all return an undependent sort and bind in every
+argument after them.
+
+**Two binder lints.** `lint distinct-binders` refuses a quantifier on a
+variable a quantifier around it already binds (`∀x∃xFx`), at the inner
+one; `lint non-vacuous-binders` refuses a quantifier that binds nothing
+(`∀xFa`), at its variable. forall x: UBC wants the first, Magnus's forallx
+both; Calgary and the Open Logic Project allow both formulas.
+
 **Building terms.** `SurfaceLanguage` builds the trees a caller would
 otherwise spell out field by field. `app(name, args)` applies a
 constructor to its arguments as written: the node at the return sort, each

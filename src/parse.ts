@@ -42,7 +42,7 @@ import type { NotationInfo, Spec, TermInfo } from "./reader/spec.js";
 import type { Binder, TypeRef } from "./reader/statements.js";
 import { type Reading, Scanner, type ScanPoint, type Scope } from "./scan.js";
 import type { AppTerm, Term, VariableTerm } from "./term.js";
-import { walkTerm } from "./term.js";
+import { bindsAt, freeVariables, walkTerm } from "./term.js";
 
 const TEMPLATES: Record<string, string> = {
   unrecognized_chunk: "“{chunk}” is not part of this language.",
@@ -60,6 +60,10 @@ const TEMPLATES: Record<string, string> = {
     "Parentheses may only enclose a sentence joined by a two-place connective.",
   free_variable:
     "“{name}” is a free variable; every formula must be a sentence.",
+  rebound_variable:
+    "“{name}” is already bound by a quantifier around this one; use another variable.",
+  vacuous_binder:
+    "“{name}” does not occur in this quantifier's scope, so it binds nothing.",
   sort_mismatch: "This has sort {actual} where {expected} is needed.",
   term_not_sentence: "This is a {actual}, not a complete sentence.",
   needs_parentheses: "“{token}” binds too loosely here; parenthesize it.",
@@ -296,10 +300,8 @@ export class SurfaceLanguage {
         this.elidedOf.set(term.returnSort, term);
       }
 
-      for (const binder of term.binders) {
-        if (binder.binds) {
-          this.bindableSorts.add(binderSort(binder));
-        }
+      for (const binding of term.bindings) {
+        this.bindableSorts.add(binderSort(term.binders[binding.binder]));
       }
     }
 
@@ -469,6 +471,7 @@ export class SurfaceLanguage {
     for (const name of path) {
       wrapped = {
         args: [wrapped],
+        bindings: [],
         fixity: null,
         grouped: false,
         kind: "app",
@@ -531,7 +534,8 @@ export class SurfaceLanguage {
     }
 
     return {
-      args: args.map((arg, at) => this.argument(name, info.binders[at], arg)),
+      args: args.map((arg, at) => this.argument(info, at, arg)),
+      bindings: info.bindings,
       fixity: null,
       grouped: false,
       kind: "app",
@@ -543,12 +547,10 @@ export class SurfaceLanguage {
     };
   }
 
-  /** {@link app}'s argument for one binder. */
-  private argument(
-    name: string,
-    binder: Binder | undefined,
-    arg: Term,
-  ): Term {
+  /** {@link app}'s argument `at`. */
+  private argument(info: TermInfo, at: number, arg: Term): Term {
+    const { name } = info;
+    const binder = info.binders[at];
     const sort = binderSort(binder);
 
     if (binder?.binds === true) {
@@ -558,7 +560,9 @@ export class SurfaceLanguage {
         );
       }
 
-      return arg.binder ? arg : { ...arg, binder: true };
+      const binds = bindsAt(info.bindings, at);
+
+      return arg.binder === binds ? arg : { ...arg, binder: binds };
     }
 
     const wrapped = this.coerceTerm(
@@ -972,6 +976,7 @@ class Parse {
         kind: "app",
         term: entry.info.name,
         args: [coercedLeft, coercedRight],
+        bindings: entry.info.bindings,
         sort: entry.info.returnSort,
         span: { start: left.span.start, end: right.span.end },
         grouped: false,
@@ -1064,6 +1069,7 @@ class Parse {
       kind: "app",
       term: entry.info.name,
       args: [coercedLeft, coercedRight],
+      bindings: entry.info.bindings,
       sort: entry.info.returnSort,
       span: { start: left.span.start, end: right.span.end },
       grouped: false,
@@ -1248,7 +1254,10 @@ class Parse {
       }
 
       if (binder.binds) {
-        const variable = this.expectBoundVariable(binderSort(binder));
+        const variable = this.expectBoundVariable(
+          binderSort(binder),
+          bindsAt(entry.info.bindings, i),
+        );
 
         if (variable === null) {
           return null;
@@ -1283,6 +1292,7 @@ class Parse {
       kind: "app",
       term: entry.info.name,
       args,
+      bindings: entry.info.bindings,
       sort: entry.info.returnSort,
       span: {
         start,
@@ -1341,7 +1351,10 @@ class Parse {
       const { binder, index, prec } = part.slot;
 
       if (binder.binds) {
-        const variable = this.expectBoundVariable(binderSort(binder));
+        const variable = this.expectBoundVariable(
+          binderSort(binder),
+          bindsAt(entry.info.bindings, index),
+        );
 
         if (variable === null) {
           return null;
@@ -1386,6 +1399,7 @@ class Parse {
       kind: "app",
       term: entry.info.name,
       args,
+      bindings: entry.info.bindings,
       sort: entry.info.returnSort,
       span: { start, end: args[args.length - 1]?.span.end ?? this.position },
       grouped: false,
@@ -1409,7 +1423,15 @@ class Parse {
     return null;
   }
 
-  private expectBoundVariable(sort: string): VariableTerm | null {
+  /**
+   * The variable a bound binder takes, marked binding when the binder
+   * `binds` (see {@link TermInfo.bindings}); one the return sort depends
+   * on is still a variable, but a free occurrence.
+   */
+  private expectBoundVariable(
+    sort: string,
+    binds: boolean,
+  ): VariableTerm | null {
     const point = this.at(this.position);
     const reading = point.readings.find(
       (r): r is Reading & { kind: "name" } =>
@@ -1435,7 +1457,7 @@ class Parse {
       sort,
       span: { start: point.start, end: this.position },
       grouped: false,
-      binder: true,
+      binder: binds,
     };
   }
 
@@ -1487,7 +1509,7 @@ class Parse {
     const argBinders = info.binders.filter((binder) => !binder.binds);
     const args: Term[] = [];
 
-    for (const binder of info.binders) {
+    for (const [at, binder] of info.binders.entries()) {
       const target = binderSort(binder);
 
       // A bound binder is filled positionally, by a variable of its sort —
@@ -1501,7 +1523,10 @@ class Parse {
           );
         }
 
-        const variable = this.expectBoundVariable(target);
+        const variable = this.expectBoundVariable(
+          target,
+          bindsAt(info.bindings, at),
+        );
 
         if (variable === null) {
           return null;
@@ -1598,6 +1623,7 @@ class Parse {
               kind: "app",
               term: combiner.name,
               args: [folded, leaf],
+              bindings: combiner.bindings,
               sort: combiner.returnSort,
               span: { start: folded.span.start, end: leaf.span.end },
               grouped: false,
@@ -1621,6 +1647,7 @@ class Parse {
           kind: "app",
           term: elided.name,
           args: [],
+          bindings: elided.bindings,
           sort: elided.returnSort,
           span: { start, end: start + reading.length },
           grouped: false,
@@ -1662,6 +1689,7 @@ class Parse {
       kind: "app",
       term: reading.name,
       args,
+      bindings: info.bindings,
       sort: info.returnSort,
       span: { start, end: this.position },
       grouped: false,
@@ -1743,6 +1771,7 @@ class Parse {
             kind: "app",
             term: info.name,
             args: [],
+            bindings: info.bindings,
             sort: info.returnSort,
             span: { start: point.start, end: this.position },
             grouped: false,
@@ -1769,6 +1798,7 @@ class Parse {
             kind: "app",
             term: head.info.name,
             args: [],
+            bindings: head.info.bindings,
             sort: head.info.returnSort,
             span: { start: point.start, end: this.position },
             grouped: false,
@@ -1796,6 +1826,14 @@ class Parse {
 
     walkTerm(term, (node, bound) => {
       if (node.kind === "variable") {
+        if (
+          lints.includes("distinct-binders") &&
+          node.binder &&
+          bound.has(node.name)
+        ) {
+          this.report("rebound_variable", { name: node.name }, node.span);
+        }
+
         // A leaf of a sort no quantifier binds — a constant from a
         // `@vars` pool, like Calgary's names — cannot be *free*: freedom
         // is only meaningful where binding is possible.
@@ -1813,6 +1851,23 @@ class Parse {
       }
 
       this.refuseOperands(node);
+
+      if (lints.includes("non-vacuous-binders")) {
+        for (const binding of node.bindings) {
+          const binder = node.args[binding.binder];
+
+          if (
+            binder?.kind === "variable" &&
+            !binding.scope.some((at) => {
+              const arg = node.args[at];
+
+              return arg !== undefined && freeVariables(arg).has(binder.name);
+            })
+          ) {
+            this.report("vacuous_binder", { name: binder.name }, binder.span);
+          }
+        }
+      }
 
       if (lints.includes("parenthesize-binary-only") && node.grouped) {
         // The same class the printer brackets — see `isConnective`, which

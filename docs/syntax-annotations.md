@@ -321,7 +321,18 @@ The closed set of refusal conventions:
   application syntax and exempt.
 - `closed-sentences` — a free variable is an error, reported at its own
   position. Only variables of sorts some quantifier binds count; a
-  `@vars` constant (Calgary's names) cannot be "free".
+  `@vars` constant (Calgary's names) cannot be "free". A binder whose
+  return sort depends on it (`term v {x: var}: tm x`) binds nothing, so
+  it does not make its sort bindable.
+- `distinct-binders` — a quantifier on a variable already bound by a
+  quantifier around it is an error, reported at the inner one's variable:
+  `∀x∃xFx` and `∀x(Fx ∧ ∃xGx)` are refused, `∀xFx ∧ ∃xGx` is not
+  (forall x: UBC and Magnus's forallx: "A contains no x-quantifiers").
+- `non-vacuous-binders` — a quantifier whose variable occurs free nowhere
+  it binds is an error, reported at its variable: `∀xFa` is refused
+  (Magnus's forallx: "A contains at least one occurrence of x"). With
+  `distinct-binders` on as well, `∀x∃xFx` gets both errors, since the
+  inner quantifier leaves the outer one nothing to bind.
 
 `parse(text, { lints: false })` reads text without them — for input that
 is grammatical but not surface-idiomatic. `parse(text, { mode: "engine" })`

@@ -187,6 +187,20 @@ replacing variable keeping the binding flag of the occurrence it replaces;
 `variables(term)` maps every variable name in it, binding occurrences too,
 to its sort, in the order each first occurs.
 
+Binding is read as mm0.md reads it, by dependency rather than position. A
+`{x}` binder binds only when the return sort does not depend on x, and
+then in exactly the arguments whose types depend on x: `term all {x: var}
+(p: wff x): wff` binds x in `p`; `term v {x: var}: tm x` binds nothing and
+passes x through free; `term sb {x: var} (t: tm) (p: wff x): wff` binds x
+in `p` but not in `t`. Each application node carries its constructor's
+`bindings` (`TermInfo.bindings`, `{ binder, scope }` argument indices), so
+`walkTerm`, `freeVariables` and `scopeOf(term, at, bound)` scope a binding
+without the spec, and `bindsAt(bindings, at)` says whether one argument
+binds. `bindingSites(term)` lists each variable occurrence that is not
+itself binding, with the path of the binding occurrence that binds it (the
+innermost, under shadowing) or `null` when it is free; the paths are
+`printPieces`'s, so a display can link a variable to its quantifier.
+
 ### `@abstract`
 
 `abstractContext(language, { left, right?, leftPlug, rightPlug, hole }, { variables? })`

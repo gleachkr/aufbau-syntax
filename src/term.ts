@@ -15,6 +15,12 @@ export interface AppTerm {
   /** The constructor: a declared term, def, or coercion name. */
   readonly term: string;
   readonly args: readonly Term[];
+  /**
+   * The arguments that bind a variable, and where: the constructor's
+   * `TermInfo.bindings`, so a walk can scope a binding without the spec.
+   * Empty for a constructor that binds nothing, and for a coercion.
+   */
+  readonly bindings: readonly Binding[];
   readonly sort: string;
   readonly span: Span;
   /** True when the source wrapped this node in its own bracket pair. */
@@ -30,6 +36,22 @@ export interface AppTerm {
   readonly token: string | null;
 }
 
+/**
+ * A bound binder that binds: its index among the constructor's arguments,
+ * and the indices of the arguments it binds in, in order. mm0.md reads a
+ * binding by dependency, not position: `{x}` binds in the arguments whose
+ * types depend on x, and not at all when the return sort does.
+ */
+export interface Binding {
+  readonly binder: number;
+  readonly scope: readonly number[];
+}
+
+/** Whether the argument `at` of a constructor with these `bindings` binds. */
+export function bindsAt(bindings: readonly Binding[], at: number): boolean {
+  return bindings.some((binding) => binding.binder === at);
+}
+
 export interface VariableTerm {
   readonly kind: "variable";
   /** The token as written — one of its sort's `@vars` pool. */
@@ -39,17 +61,18 @@ export interface VariableTerm {
   readonly grouped: boolean;
   /**
    * True when this occurrence fills a *binding* slot of its parent — the x
-   * of `∀x`, which scopes over the arguments after it. Set by the parser
-   * from the constructor's binder; the tree shape alone cannot tell `∀x …`
-   * from `x = y`.
+   * of `∀x`, which scopes over the arguments its parent's `bindings` name.
+   * Set by the parser from the constructor's binder; the tree shape alone
+   * cannot tell `∀x …` from `x = y`. A bound binder that binds nothing (its
+   * return sort depends on it) holds a free occurrence, and this is false.
    */
   readonly binder: boolean;
 }
 
 /**
  * Depth-first walk, parents before children. `bound` holds the variable
- * names in scope at each node; a binding occurrence extends it for the
- * arguments that follow it.
+ * names in scope at each node; a binding occurrence is visited in its
+ * parent's scope and extends it for the arguments it binds in.
  */
 export function walkTerm(
   term: Term,
@@ -62,25 +85,89 @@ export function walkTerm(
     return;
   }
 
-  let scope = bound;
+  term.args.forEach((arg, at) => {
+    walkTerm(arg, visit, scopeOf(term, at, bound));
+  });
+}
 
-  for (const arg of term.args) {
-    if (arg.kind === "variable" && arg.binder) {
-      visit(arg, scope);
-      const next = new Set(scope);
-      next.add(arg.name);
-      scope = next;
-      continue;
+/**
+ * The names in scope at `term`'s argument `at`: `bound`, and each variable
+ * its parent's bindings bind there. A binding occurrence is not in its own
+ * scope.
+ */
+export function scopeOf(
+  term: AppTerm,
+  at: number,
+  bound: ReadonlySet<string>,
+): ReadonlySet<string> {
+  const names = bindersOver(term, at).map((binder) => binder.name);
+
+  return names.length === 0 ? bound : new Set([...bound, ...names]);
+}
+
+/** `term`'s binding occurrences that bind in its argument `at`, with their indices. */
+function bindersOver(
+  term: AppTerm,
+  at: number,
+): (VariableTerm & { readonly index: number })[] {
+  return term.bindings.flatMap((binding) => {
+    const binder = term.args[binding.binder];
+
+    return binder?.kind === "variable" && binding.scope.includes(at)
+      ? [{ ...binder, index: binding.binder }]
+      : [];
+  });
+}
+
+/** Where a variable occurrence is bound: see {@link bindingSites}. */
+export interface BindingSite {
+  /** The occurrence: argument indices down from the term, as `printPieces` paths run. */
+  readonly path: readonly number[];
+  /** The binding occurrence that binds it, the innermost; null when it is free. */
+  readonly binder: readonly number[] | null;
+}
+
+/**
+ * Each variable occurrence in `term` that is not itself a binding one, in
+ * order, with the binding occurrence that binds it: the innermost, so in
+ * `∀x(Fx ∧ ∀x Gx)` the x of Gx links to the second ∀x. Coercion nodes
+ * count in the paths, since they are in the tree.
+ */
+export function bindingSites(term: Term): BindingSite[] {
+  const sites: BindingSite[] = [];
+  const visit = (
+    node: Term,
+    path: readonly number[],
+    binders: ReadonlyMap<string, readonly number[]>,
+  ): void => {
+    if (node.kind === "variable") {
+      if (!node.binder) {
+        sites.push({ binder: binders.get(node.name) ?? null, path });
+      }
+
+      return;
     }
 
-    walkTerm(arg, visit, scope);
-  }
+    node.args.forEach((arg, at) => {
+      let inner = binders;
+
+      for (const binder of bindersOver(node, at)) {
+        inner = new Map(inner).set(binder.name, [...path, binder.index]);
+      }
+
+      visit(arg, [...path, at], inner);
+    });
+  };
+
+  visit(term, [], new Map());
+
+  return sites;
 }
 
 /**
  * `term` with each variable `values` names replaced, bound or free: a
  * def's binders by its arguments, a rule's metavariables by what they
- * matched. Capture is the caller's business. A variable replaced by a
+ * matched. Binding is the caller's business. A variable replaced by a
  * variable keeps its occurrence's binding flag, since it stands where the
  * occurrence bound.
  */

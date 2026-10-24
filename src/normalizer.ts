@@ -40,6 +40,7 @@ import type {
 } from "./rewrite.js";
 import { rewriteSystem } from "./rewrite.js";
 import type { AppTerm, Term } from "./term.js";
+import { bindsAt } from "./term.js";
 import { definiens } from "./unfold.js";
 
 export type { VariableInfo } from "./rewrite.js";
@@ -252,13 +253,14 @@ export class Normalizer {
       return this.variableTerm(node, false);
     }
 
-    const binders = this.lang.spec.terms.get(node.term)?.binders ?? [];
+    const bindings = this.lang.spec.terms.get(node.term)?.bindings ?? [];
     const term: AppTerm = {
       args: node.args.map((arg, at) =>
-        arg.term === null && binders[at]?.binds === true
+        arg.term === null && bindsAt(bindings, at)
           ? this.variableTerm(arg, true)
           : this.toTerm(arg),
       ),
+      bindings,
       fixity: null,
       grouped: false,
       kind: "app",

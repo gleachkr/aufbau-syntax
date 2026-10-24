@@ -185,6 +185,7 @@ const SPAN = { end: 0, start: 0 } as const;
 function app(term: string, sort: string, args: Term[]): Term {
   return {
     args,
+    bindings: [],
     fixity: null,
     grouped: false,
     kind: "app",

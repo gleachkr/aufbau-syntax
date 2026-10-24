@@ -1,4 +1,5 @@
-import type { Binder, SurfaceLanguage, Term } from "../../src/index";
+import type { Binder, Binding, SurfaceLanguage, Term } from "../../src/index";
+import { bindsAt } from "../../src/index";
 
 /**
  * Well-sorted terms over a spec, generated at random from a seed: the
@@ -30,11 +31,17 @@ function variable(name: string, sort: string, binder: boolean): Term {
   return { kind: "variable", name, sort, span: SPAN, grouped: false, binder };
 }
 
-function application(term: string, args: Term[], sort: string): Term {
+function application(
+  term: string,
+  args: Term[],
+  sort: string,
+  bindings: readonly Binding[] = [],
+): Term {
   return {
     kind: "app",
     term,
     args,
+    bindings,
     sort,
     span: SPAN,
     grouped: false,
@@ -164,11 +171,15 @@ export function termGenerator(
         build: () =>
           application(
             info.name,
-            info.binders.map((binder) => {
+            info.binders.map((binder, at) => {
               const bound = sortOf(binder) ?? "";
 
               if (binder.binds) {
-                return variable(pick(vars(bound)) ?? "", bound, true);
+                return variable(
+                  pick(vars(bound)) ?? "",
+                  bound,
+                  bindsAt(info.bindings, at),
+                );
               }
 
               // Where the parser would supply the sort's elided term,
@@ -187,6 +198,7 @@ export function termGenerator(
               return generate(bound, depth - 1, new Set());
             }),
             sort,
+            info.bindings,
           ),
       });
     }
